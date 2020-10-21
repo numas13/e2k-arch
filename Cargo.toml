@@ -1,0 +1,12 @@
+[package]
+name = "e2k-arch"
+version = "0.1.0"
+authors = ["Denis Drakhnya <numas13@gmail.com>"]
+description = "Library for decode and encode E2K instructions."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/numas13/e2k-arch"
+keywords = ["e2k", "isa", "decode", "encode"]
+edition = "2018"
+
+[dependencies]
+bitfield = "0.13"
