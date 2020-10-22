@@ -145,6 +145,12 @@ bitfield! {
     pub vfrpsz, set_vfrpsz: 28;
 }
 
+impl Cs1 {
+    pub fn is_lts0(&self) -> bool {
+        self.0 & 0xe000_0000 == 0
+    }
+}
+
 bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Cs1Lts0(u32);

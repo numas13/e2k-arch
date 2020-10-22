@@ -296,7 +296,12 @@ impl Bundle {
     }
 
     pub fn get_max_lts_index(&self) -> Option<u8> {
-        let mut ret = None;
+        let mut ret = if self.hs.cs1() && self.cs1.is_lts0() {
+            Some(0)
+        } else {
+            None
+        };
+
         for (i, als) in self.als.iter().enumerate() {
             if self.hs.als_mask() & 1 << i != 0 {
                 let src2 = als.src2();
