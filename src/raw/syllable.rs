@@ -37,18 +37,44 @@ bitfield! {
 }
 
 impl Hs {
+    /// Returns the offset in bytes to a middle of the bundle.
     pub fn offset(&self) -> usize {
         self.raw_offset() as usize * 4 + 4
     }
 
+    /// Sets the offset to a middle of the bundle.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `offset` is greater than 44.
+    /// * Panics if `offset` is not multiples of 4.
+    pub fn set_offset(&mut self, offset: usize) {
+        assert!(offset <= 44 && offset & 3 == 0);
+        self.set_raw_offset(offset as u8 / 4 - 1)
+    }
+
+    /// Returns the length of the bundle.
     pub fn len(&self) -> usize {
         self.raw_len() as usize * 8 + 8
     }
 
+    /// Sets the length of the bundle to `new_len`.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `new_len` is greater than 64.
+    /// * Panics if `new_len` is not multiples of 8.
+    pub fn set_len(&mut self, new_len: usize) {
+        assert!(new_len <= 64 && new_len & 7 == 0);
+        self.set_raw_len(new_len as u8 / 8 - 1)
+    }
+
+    /// Returns `true` if the bundle has `ALES2+5` syllable.
     pub fn is_ales25(&self) -> bool {
         (self.0 & (HS_SS_BIT | HS_ALS_MASK | HS_CS_MASK)).count_ones() < self.raw_offset() as u32
     }
 
+    /// Returns the offset to `ALES2+5` syllable.
     pub fn ales25_offset(&self) -> usize {
         4 + (self.0 & (HS_SS_BIT | HS_ALS_MASK | HS_CS0_BIT)).count_ones() as usize * 4
     }
