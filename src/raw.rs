@@ -1,6 +1,8 @@
 pub mod syllable;
+pub mod types;
 
 use self::syllable::{Aas, AasDst, Ales, Als, Cds, Cs0, Cs1, Hs, Lts, Pls, Ss};
+use self::types::{LiteralPos, Src2};
 use crate::{error::Error, util};
 
 #[repr(transparent)]
@@ -304,17 +306,14 @@ impl Bundle {
 
         for (i, als) in self.als.iter().enumerate() {
             if self.hs.als_mask() & 1 << i != 0 {
-                let src2 = als.src2();
-                if src2 & 0xf0 == 0xd0 {
-                    let lit = src2 & 0xf;
-                    let index = src2 & 0x3;
-                    if lit & 0xc == 0xc && index < 3 {
-                        ret = Some(index + 1)
-                    } else if lit & 0xc == 0x8 {
-                        ret = Some(index);
-                    } else if lit & 0x8 == 0 && index < 2 {
-                        ret = Some(index);
-                    }
+                if let Some(Src2::Lit(lit)) = Src2::from_raw(als.src2()) {
+                    let pos = match lit {
+                        LiteralPos::F16lo(pos) => pos.value(),
+                        LiteralPos::F16hi(pos) => pos.value(),
+                        LiteralPos::F32(pos) => pos.value(),
+                        LiteralPos::F64(pos) => pos.value() + 1,
+                    };
+                    ret = Some(pos);
                 }
             }
         }
