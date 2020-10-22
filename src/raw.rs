@@ -18,9 +18,13 @@ impl Packed {
             return Err(Error::NeedMoreBytes(len - slice.len()));
         }
         let (data, tail) = slice.split_at(len);
-        // safe because Bundle has repr(transparent)
-        let bundle = unsafe { &*(data as *const [u8] as *const Packed) };
+        // safe because Packed has repr(transparent)
+        let bundle = unsafe { Self::new_unchecked(data) };
         Ok((bundle, tail))
+    }
+
+    pub unsafe fn new_unchecked(data: &[u8]) -> &Self {
+        &*(data as *const [u8] as *const Self)
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -50,7 +54,7 @@ pub struct Bundle {
     pub ales: [Option<Ales>; 6],
     pub aas_dst: [u8; 4],
     pub aas: [Aas; 4],
-    pub lts: [Option<Lts>; 4],
+    pub lts: [Lts; 4],
     pub pls: [Pls; 3],
     pub cds: [Cds; 3],
 }
@@ -159,12 +163,181 @@ impl Bundle {
         for i in 0..self.hs.pls_len() as usize {
             self.pls[i] = Pls(read_u32()?);
         }
-        for i in 0..4 {
-            match read_u32() {
-                Ok(val) => self.lts[i] = Some(Lts(val)),
-                Err(_) => break,
-            }
+        let lts_count = self.get_max_lts_index().map_or(0, |i| i + 1);
+        for i in 0..lts_count as usize {
+            self.lts[i] = Lts(read_u32()?);
         }
         Ok(&src[..offset])
+    }
+
+    pub fn pack<'a>(&self, buffer: &'a mut [u8]) -> Result<(&'a Packed, &'a mut [u8]), Error> {
+        let middle_offset = self.pack_head(buffer)?;
+        let tail_offset = self.pack_middle(middle_offset, buffer)?;
+        let len = self.pack_tail(tail_offset, buffer)?;
+        let mut hs = self.hs;
+        hs.set_raw_offset(middle_offset as u8 / 4 - 1);
+        hs.set_raw_len(len as u8 / 8 - 1);
+        buffer[0..4].copy_from_slice(&hs.0.to_le_bytes());
+        let (head, tail) = buffer.split_at_mut(len);
+        let packed = unsafe { Packed::new_unchecked(head) };
+        Ok((packed, tail))
+    }
+
+    fn pack_head<'a>(&self, buffer: &'a mut [u8]) -> Result<usize, Error> {
+        let mut offset = 4;
+        let mut write_u32 = |value: u32| {
+            let end = offset + 4;
+            if end <= buffer.len() {
+                let bytes = value.to_le_bytes();
+                buffer[offset..end].copy_from_slice(&bytes);
+                offset = end;
+                Ok(())
+            } else {
+                Err(Error::UnexpectedEnd)
+            }
+        };
+
+        if self.hs.ss() {
+            write_u32(self.ss.0)?;
+        }
+
+        for (i, als) in self.als.iter().enumerate() {
+            if self.hs.als_mask() & 1 << i != 0 {
+                write_u32(als.0)?;
+            }
+        }
+
+        if self.hs.cs0() {
+            write_u32(self.cs0.0)?;
+        }
+
+        if self.ales[2].is_some() || self.ales[5].is_some() {
+            let ales2 = self.ales[2].map(|i| i.0).unwrap_or_default();
+            let ales5 = self.ales[5].map(|i| i.0).unwrap_or_default();
+            write_u32((ales2 as u32) << 16 | ales5 as u32)?;
+        }
+
+        if self.hs.cs1() {
+            write_u32(self.cs1.0)?;
+        }
+
+        Ok(offset)
+    }
+
+    fn pack_middle<'a>(&self, mut offset: usize, buffer: &'a mut [u8]) -> Result<usize, Error> {
+        let mut write_u16 = |value: u16| {
+            let start = offset ^ 2;
+            let end = start + 2;
+            if end <= buffer.len() {
+                buffer[start..end].copy_from_slice(&value.to_le_bytes());
+                offset += 2;
+                Ok(())
+            } else {
+                Err(Error::UnexpectedEnd)
+            }
+        };
+
+        for i in &[0, 1, 3, 4] {
+            if let Some(ales) = self.ales[*i] {
+                if self.hs.ales_mask() & 1 << *i != 0 {
+                    write_u16(ales.0)?;
+                }
+            }
+        }
+
+        for i in (0..4).step_by(2) {
+            if self.ss.aas_mask() & 3 << i != 0 {
+                let dst0 = self.aas_dst[i] as u16;
+                let dst1 = self.aas_dst[i + 1] as u16;
+                write_u16(dst0 << 8 | dst1)?;
+            }
+        }
+
+        for i in 0..4 {
+            if self.ss.aas_mask() & 1 << i != 0 {
+                write_u16(self.aas[i].0)?;
+            }
+        }
+
+        Ok((offset + 3) & !3)
+    }
+
+    fn pack_tail<'a>(&self, mut offset: usize, buffer: &'a mut [u8]) -> Result<usize, Error> {
+        let lts_count = self.get_max_lts_index().map_or(0, |i| i + 1);
+        let count = (lts_count + self.hs.pls_len() + self.hs.cds_len()) as usize;
+
+        if (offset + count * 4) % 8 != 0 {
+            offset += 4;
+        }
+
+        if buffer.len() < offset + count * 4 {
+            return Err(Error::BadFormat);
+        }
+
+        let mut write_u32 = |value: u32| {
+            let end = offset + 4;
+            buffer[offset..end].copy_from_slice(&value.to_le_bytes());
+            offset = end;
+        };
+
+        for lts in self.lts.iter().take(lts_count as usize).rev() {
+            write_u32(lts.0);
+        }
+
+        for pls in self.pls.iter().take(self.hs.pls_len() as usize).rev() {
+            write_u32(pls.0);
+        }
+
+        for cds in self.cds.iter().take(self.hs.cds_len() as usize).rev() {
+            write_u32(cds.0);
+        }
+
+        Ok(offset)
+    }
+
+    pub fn get_max_lts_index(&self) -> Option<u8> {
+        let mut ret = None;
+        for (i, als) in self.als.iter().enumerate() {
+            if self.hs.als_mask() & 1 << i != 0 {
+                let src2 = als.src2();
+                if src2 & 0xf0 == 0xd0 {
+                    let lit = src2 & 0xf;
+                    let index = src2 & 0x3;
+                    if lit & 0xc == 0xc && index < 3 {
+                        ret = Some(index + 1)
+                    } else if lit & 0xc == 0x8 {
+                        ret = Some(index);
+                    } else if lit & 0x8 == 0 && index < 2 {
+                        ret = Some(index);
+                    }
+                }
+            }
+        }
+        ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_bundle() {
+        let paths = [
+            "test-data/bundle0.bin",
+            "test-data/bundle1.bin",
+            "test-data/bundle2.bin",
+            "test-data/bundle3.bin",
+            "test-data/bundle4.bin",
+        ];
+
+        for path in &paths {
+            let data = fs::read(path).unwrap();
+            let (bundle, _) = Bundle::from_slice(data.as_slice()).unwrap();
+            let mut buffer = [0u8; 64];
+            let (packed, _) = bundle.pack(&mut buffer).unwrap();
+            assert_eq!(packed.as_slice(), data);
+        }
     }
 }

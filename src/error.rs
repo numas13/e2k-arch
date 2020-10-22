@@ -4,6 +4,7 @@ use core::fmt;
 pub enum Error {
     NeedMoreBytes(usize),
     UnexpectedEnd,
+    BadFormat,
 }
 
 impl fmt::Display for Error {
@@ -11,6 +12,7 @@ impl fmt::Display for Error {
         match self {
             Self::NeedMoreBytes(n) => write!(fmt, "need {} bytes", n),
             Self::UnexpectedEnd => fmt.write_str("unexpected bundle end"),
+            Self::BadFormat => fmt.write_str("bad format"),
         }
     }
 }
