@@ -49,7 +49,7 @@ impl Hs {
     /// * Panics if `offset` is greater than 44.
     /// * Panics if `offset` is not multiples of 4.
     pub fn set_offset(&mut self, offset: usize) {
-        assert!(offset <= 44 && offset & 3 == 0);
+        assert!(offset <= 44 && offset.trailing_zeros() >= 2);
         self.set_raw_offset(offset as u8 / 4 - 1)
     }
 
@@ -65,7 +65,7 @@ impl Hs {
     /// * Panics if `new_len` is greater than 64.
     /// * Panics if `new_len` is not multiples of 8.
     pub fn set_len(&mut self, new_len: usize) {
-        assert!(new_len <= 64 && new_len & 7 == 0);
+        assert!(new_len <= 64 && new_len.trailing_zeros() >= 3);
         self.set_raw_len(new_len as u8 / 8 - 1)
     }
 

@@ -134,7 +134,7 @@ impl Bundle {
             let o = i * 2;
             if aas_mask & 3 << o != 0 {
                 let dst = AasDst(read_u16()?);
-                if aas_mask & 1 << o + 1 != 0 {
+                if aas_mask & 1 << (o + 1) != 0 {
                     self.aas_dst[o + 1] = dst.dst1();
                 }
                 if aas_mask & 1 << o != 0 {
@@ -230,7 +230,9 @@ impl Bundle {
         let mut write_u16 = |value: u16| {
             let start = offset ^ 2;
             let end = start + 2;
-            if end <= buffer.len() {
+            if 64 < end {
+                Err(Error::BadFormat)
+            } else if end <= buffer.len() {
                 buffer[start..end].copy_from_slice(&value.to_le_bytes());
                 offset += 2;
                 Ok(())
@@ -313,7 +315,7 @@ impl Bundle {
                         LiteralPos::F32(pos) => pos.value(),
                         LiteralPos::F64(pos) => pos.value() + 1,
                     };
-                    ret = Some(pos);
+                    ret = Some(ret.map_or(pos, |i| core::cmp::max(i, pos)));
                 }
             }
         }
@@ -334,6 +336,7 @@ mod tests {
             "test-data/bundle2.bin",
             "test-data/bundle3.bin",
             "test-data/bundle4.bin",
+            "test-data/bundle5.bin",
         ];
 
         for path in &paths {

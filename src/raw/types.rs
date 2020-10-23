@@ -169,11 +169,11 @@ mod tests {
 
     #[test]
     fn test_literal_pos() {
-        assert!(LiteralPos16::new(1).is_some());
+        assert_eq!(LiteralPos16::new(1), Some(LiteralPos16(1)));
+        assert_eq!(LiteralPos32::new(3), Some(LiteralPos32(3)));
+        assert_eq!(LiteralPos64::new(2), Some(LiteralPos64(2)));
         assert!(LiteralPos16::new(2).is_none());
-        assert!(LiteralPos32::new(3).is_some());
         assert!(LiteralPos32::new(4).is_none());
-        assert!(LiteralPos64::new(2).is_some());
         assert!(LiteralPos64::new(3).is_none());
 
         assert_eq!(LiteralPos16::new_clamp(8).value(), 1);
