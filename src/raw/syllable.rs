@@ -31,7 +31,7 @@ bitfield! {
     pub ss, set_ss: 12;
     /// TODO
     pub mdl, set_mdl: 13;
-    /// A bitmask of control command syllables.
+    /// A bitmask of control commands syllables.
     pub u8, cs_mask, set_cs_mask: 15, 14;
     /// A presence of a 1st control commands syllable.
     pub cs0, set_cs0: 14;
@@ -138,7 +138,6 @@ bitfield! {
     // TODO: SS[9]
     /// A pipeline register for a control transfer.
     pub u8, ct_ctpr, set_ct_ctpr: 11, 10;
-    /// A bitmask of control command syllables.
     /// A bitmask of half-syllables for arrays access units.
     pub u8, aas_mask, set_aas_mask: 15, 12;
     /// A presence of `AAS0` and `AAS2`.
@@ -180,21 +179,72 @@ bitfield! {
 }
 
 impl Ss {
+    /// A bitmask of `AAS0` and `AAS1`.
     pub fn aas_dst_mask(&self) -> u8 {
         (self.aas_mask() & 5) | (self.aas_mask() >> 1 & 5)
     }
 }
 
 bitfield! {
+    /// A syllable for arithmetic logic channels.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Als(u32);
+    /// A destination predicate register for compare instructions.
     pub u8, cmp_dst, set_cmp_dst: 4, 0;
+    /// An opcode for compare instructions.
     pub u8, cmp_op, set_cmp_op: 7, 5;
+    /// Used as 1st operand for memory write instructions.
+    ///
+    /// | Value         | Meaning           |
+    /// |---------------|-------------------|
+    /// | `0x00..=0x7f` | `%b[0]..=%b[127]` |
+    /// | `0x80..=0xbf` | `%r0..=%r63`      |
+    /// | `0xe0..=0xff` | `%g0..=%g31`      |
     pub u8, src4, set_src4: 7, 0;
+    /// Used as a destination for most instructions.
+    ///
+    /// | Value         | Meaning           |
+    /// |---------------|-------------------|
+    /// | `0x00..=0x7f` | `%b[0]..=%b[127]` |
+    /// | `0x80..=0xbf` | `%r0..=%r63`      |
+    /// | `0xcd`        | `%tst`            |
+    /// | `0xce`        | `%tc`             |
+    /// | `0xcf`        | `%tcd`            |
+    /// | `0xd1..=0xd3` | `%ctpr1..=%ctpr3` |
+    /// | `0xbf`        | `%empty`          |
+    /// | `0xe0..=0xff` | `%g0..=%g31`      |
     pub u8, dst, set_dst: 7, 0;
+    /// Depending on an instruction can be:
+    /// * 1st operand if `src1` is used as an additional opcode.
+    /// * 2nd operand for most instructions.
+    /// * 3rd operand for memory write instructions.
+    ///
+    /// | Value         | Meaning                                   |
+    /// |---------------|-------------------------------------------|
+    /// | `0x00..=0x7f` | `%b[0]..=%b[127]`                         |
+    /// | `0x80..=0xbf` | `%r0..=%r63`                              |
+    /// | `0xc0..=0xcf` | `imm4`                                    |
+    /// | `0xd0..=0xd1` | 16-bit `lit` loc at low half of `LTS`     |
+    /// | `0xd4..=0xd5` | 16-bit `lit` loc at high half of `LTS`    |
+    /// | `0xd8..=0xdb` | 32-bit `lit` loc                          |
+    /// | `0xdc..=0xde` | 64-bit `lit` loc                          |
+    /// | `0xe0..=0xff` | `%g0..=%g31`                              |
     pub u8, src2, set_src2: 15, 8;
+    /// Depending on an instruction can be:
+    /// * 1st operand for most instructions.
+    /// * 2nd operand for memory write instructions.
+    /// * An additional opcode for some instructions that do not need this operand.
+    ///
+    /// | Value         | Meaning                           |
+    /// |---------------|-----------------------------------|
+    /// | `0x00..=0x7f` | `%b[0]..=%b[127]`                 |
+    /// | `0x80..=0xbf` | `%r0..=%r63`                      |
+    /// | `0xc0..=0xdf` | `imm5` or an additional opcode    |
+    /// | `0xe0..=0xff` | `%g0..=%g31`                      |
     pub u8, src1, set_src1: 23, 16;
+    /// An opcode.
     pub u8, op, set_op: 30, 24;
+    /// A speculative mode execution.
     pub sm, set_sm: 31;
 }
 
@@ -264,9 +314,21 @@ bitfield! {
 }
 
 bitfield! {
+    /// The half-syllable extension for arithmetic logic channels.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Ales(u16);
+    /// Depending on an instruction can be:
+    /// * A register see table below.
+    /// * An 8-bit immediate value.
+    /// * Must be `0xc0` if do not used.
+    ///
+    /// | Value         | Meaning                           |
+    /// |---------------|-----------------------------------|
+    /// | `0x00..=0x7f` | `%b[0]..=%b[127]`                 |
+    /// | `0x80..=0xbf` | `%r0..=%r63`                      |
+    /// | `0xe0..=0xff` | `%g0..=%g31`                      |
     pub u8, src3, set_src3: 7, 0;
+    /// An extension opcode.
     pub u8, op, set_op: 15, 8;
 }
 
