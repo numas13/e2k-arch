@@ -284,7 +284,11 @@ bitfield! {
     // setei
     pub u8, ei, set_ei: 7, 0;
     // setmas
-    pub u8, mas, set_mas: 27, 21;
+    // loads and stores with mas cannot be combined
+    pub u8, mas5, set_mas5: 6, 0;
+    pub u8, mas3, set_mas3: 13, 7;
+    pub u8, mas2, set_mas2: 20, 14;
+    pub u8, mas0, set_mas0: 27, 21;
 
     pub tr, set_tr: 25;
     pub bn, set_bn: 26;
