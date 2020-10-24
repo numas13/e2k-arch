@@ -1,10 +1,8 @@
 //! Low-level representations of bundles.
 
 pub mod syllable;
-pub mod types;
 
-use self::syllable::{Aas, AasDst, Ales, Als, Cds, Cs0, Cs1, Hs, Lts, Pls, Ss};
-use self::types::{LitLoc, Src2};
+use self::syllable::{Aas, AasDst, Ales, Als, Cds, Cs0, Cs1, Hs, Lts, Pls, Rlp, Ss};
 use crate::{error::Error, util};
 
 /// A packed bundle.
@@ -75,7 +73,7 @@ impl Packed {
 
 /// An unpacked bundle.
 #[derive(Clone, Default)]
-pub struct Bundle {
+pub struct Unpacked {
     /// The header syllable.
     pub hs: Hs,
     /// The stubs syllable.
@@ -94,13 +92,14 @@ pub struct Bundle {
     pub aas: [Aas; 4],
     /// The syllables for literal values.
     pub lts: [Lts; 4],
+    pub lts_count: usize,
     /// The syllables for logical predicate processing.
     pub pls: [Pls; 3],
     /// The syllables for conditional execution.
     pub cds: [Cds; 3],
 }
 
-impl Bundle {
+impl Unpacked {
     /// Tries to parse a bundle from the `buf`.
     ///
     /// # Errors
@@ -113,14 +112,14 @@ impl Bundle {
     ///
     /// ```
     /// # use e2k_arch::raw::syllable::{Hs, Als};
-    /// # use e2k_arch::raw::Bundle;
+    /// # use e2k_arch::raw::Unpacked;
     /// let bytes = [0x01, 0x00, 0x00, 0x04, 0x02, 0x01, 0x00, 0x00];
     /// let mut als = Als::default();
     /// als.set_op(0x00);
     /// als.set_src1(0x00);
     /// als.set_src2(0x01);
     /// als.set_dst(0x02);
-    /// let (packed, tail) = Bundle::from_bytes(&bytes)?;
+    /// let (packed, tail) = Unpacked::from_bytes(&bytes)?;
     /// assert!(packed.hs.als0());
     /// assert_eq!(packed.als[0].0, als.0);
     /// assert_eq!(tail, &[]);
@@ -132,7 +131,7 @@ impl Bundle {
     }
     /// Tries to unpack the packed bundle.
     pub fn unpack(packed: &Packed) -> Result<Self, Error> {
-        let mut bundle = Bundle::default();
+        let mut bundle = Unpacked::default();
         let tail = bundle.unpack_head(packed.as_slice())?;
         let tail = bundle.unpack_middle(tail)?;
         bundle.unpack_tail(tail)?;
@@ -219,14 +218,19 @@ impl Bundle {
             Ok(util::u32_from_le_slice(&buf[offset..]))
         };
         for i in 0..self.hs.cds_len() as usize {
-            self.cds[i] = Cds(read_u32()?);
+            self.cds[i] = Cds::from_raw(read_u32()?);
         }
         for i in 0..self.hs.pls_len() as usize {
             self.pls[i] = Pls(read_u32()?);
         }
-        let lts_count = self.get_max_lts_index().map_or(0, |i| i + 1);
-        for i in 0..lts_count as usize {
-            self.lts[i] = Lts(read_u32()?);
+        for i in 0..4 {
+            match read_u32() {
+                Ok(lts) => {
+                    self.lts_count += 1;
+                    self.lts[i] = Lts(lts);
+                }
+                Err(_) => break,
+            }
         }
         Ok(&buf[..offset])
     }
@@ -245,13 +249,13 @@ impl Bundle {
     ///
     /// ```
     /// # use e2k_arch::raw::syllable::{Hs, Ss};
-    /// # use e2k_arch::raw::Bundle;
+    /// # use e2k_arch::raw::Unpacked;
     /// let mut ss = Ss::default();
     /// ss.set_ct_op(0x02);
     /// ss.set_ct_pred(0x08);
     /// ss.set_ct_ctpr(0x03);
     /// ss.set_ipd(0x03);
-    /// let mut bundle = Bundle::default();
+    /// let mut bundle = Unpacked::default();
     /// bundle.hs.set_ss(true);
     /// bundle.ss = ss;
     /// let mut buf = [0u8; 64];
@@ -274,7 +278,7 @@ impl Bundle {
         Ok((packed, tail))
     }
     /// Tries to pack `HS`, `SS`, `ALS0-5`, `CS0`, `ALES2/5` and `CS1` to the `buf`.
-    fn pack_head<'a>(&self, buf: &'a mut [u8]) -> Result<usize, Error> {
+    fn pack_head(&self, buf: &mut [u8]) -> Result<usize, Error> {
         let mut offset = 4;
         let mut write_u32 = |value: u32| {
             let end = offset + 4;
@@ -309,7 +313,7 @@ impl Bundle {
         Ok(offset)
     }
     /// Tries to pack `ALES0/1/3/4` and `AAS0-5` to the `buf`.
-    fn pack_middle<'a>(&self, mut offset: usize, buf: &'a mut [u8]) -> Result<usize, Error> {
+    fn pack_middle(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, Error> {
         let mut write_u16 = |value: u16| {
             let start = offset ^ 2;
             let end = start + 2;
@@ -345,9 +349,9 @@ impl Bundle {
         Ok((offset + 3) & !3)
     }
     /// Tries to pack `LTS0-3`, `PLS0-2` and `CDS0-2` to the `buf`.
-    fn pack_tail<'a>(&self, mut offset: usize, buf: &'a mut [u8]) -> Result<usize, Error> {
-        let lts_count = self.get_max_lts_index().map_or(0, |i| i + 1);
-        let count = (lts_count + self.hs.pls_len() + self.hs.cds_len()) as usize;
+    fn pack_tail(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, Error> {
+        let lts_count = self.lts_count;
+        let count = lts_count + (self.hs.pls_len() + self.hs.cds_len()) as usize;
         if (offset + count * 4) % 8 != 0 {
             offset += 4;
         }
@@ -366,30 +370,37 @@ impl Bundle {
             write_u32(pls.0);
         }
         for cds in self.cds.iter().take(self.hs.cds_len() as usize).rev() {
-            write_u32(cds.0);
+            write_u32(cds.into_raw());
         }
         Ok(offset)
     }
-    /// Returns the maximum `LTS` index in the bundle.
-    pub fn get_max_lts_index(&self) -> Option<u8> {
-        let mut ret = if self.hs.cs1() && self.cs1.is_lts0() {
-            Some(0)
-        } else {
-            None
-        };
-        for (i, als) in self.als.iter().enumerate() {
-            if self.hs.als_mask() & 1 << i != 0 {
-                if let Some(Src2::Lit(lit)) = Src2::from_u8(als.src2()) {
-                    let loc = match lit {
-                        LitLoc::F16(loc, _) => loc.get(),
-                        LitLoc::F32(loc) => loc.get(),
-                        LitLoc::F64(loc) => loc.get() + 1,
-                    };
-                    ret = Some(ret.map_or(loc, |i| core::cmp::max(i, loc)));
-                }
-            }
-        }
-        ret
+    pub fn push_rlp(&mut self, rlp: Rlp) {
+        let count = self.rlp_iter().count();
+        let cds_idx = count / 2;
+        self.cds[cds_idx].rlp[count & 1] = rlp;
+        self.hs.set_cds_len(cds_idx as u8 + 1);
+    }
+    pub fn rlp_iter<'a>(&'a self) -> impl Iterator<Item = &Rlp> + 'a {
+        self.cds
+            .iter()
+            .take(self.hs.cds_len() as usize)
+            .flat_map(|cds| cds.rlp.iter())
+            .take_while(|rlp| rlp.is_some())
+    }
+    pub fn rlp_iter_mut(&mut self) -> impl Iterator<Item = &mut Rlp> {
+        self.cds
+            .iter_mut()
+            .take(self.hs.cds_len() as usize)
+            .flat_map(|cds| cds.rlp.iter_mut())
+            .take_while(|rlp| rlp.is_some())
+    }
+    pub fn find_rlp(&self, channel: usize, pred: u8) -> Option<&Rlp> {
+        self.rlp_iter()
+            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred && rlp.cluster() == (channel >= 3))
+    }
+    pub fn find_rlp_mut(&mut self, channel: usize, pred: u8) -> Option<&mut Rlp> {
+        self.rlp_iter_mut()
+            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred && rlp.cluster() == (channel >= 3))
     }
 }
 
@@ -400,17 +411,9 @@ mod tests {
 
     #[test]
     fn bundle_pack_unpack() {
-        let paths = [
-            "test-data/bundle-64-bytes.bin",
-            "test-data/bundle-lts-pls-cds.bin",
-            "test-data/bundle-align.bin",
-            "test-data/bundle-ales25.bin",
-            "test-data/bundle-hs-only.bin",
-            "test-data/bundle-64bit-lts.bin",
-        ];
-        for path in &paths {
+        for path in crate::TEST_BUNDLES_PATHS {
             let data = fs::read(path).unwrap();
-            let (bundle, tail) = Bundle::from_bytes(data.as_slice()).unwrap();
+            let (bundle, tail) = Unpacked::from_bytes(data.as_slice()).unwrap();
             assert_eq!(tail, &[], "{}", path);
             let mut buffer = [0u8; 64];
             let (packed, _) = bundle.pack(&mut buffer).unwrap();

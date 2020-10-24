@@ -2,11 +2,6 @@
 
 use bitfield::bitfield;
 
-pub const HS_SS_BIT: u32 = 1 << 12;
-pub const HS_CS_MASK: u32 = 3 << 14;
-pub const HS_CS0_BIT: u32 = 1 << 14;
-pub const HS_ALS_MASK: u32 = 0x3f << 26;
-
 bitfield! {
     /// A header syllable.
     ///
@@ -84,6 +79,11 @@ bitfield! {
 }
 
 impl Hs {
+    pub const SS_BIT: u32 = 1 << 12;
+    pub const CS_MASK: u32 = 3 << 14;
+    pub const CS0_BIT: u32 = 1 << 14;
+    pub const ALS_MASK: u32 = 0x3f << 26;
+
     /// Returns the offset in bytes to a middle of bundle.
     pub fn offset(&self) -> usize {
         self.raw_offset() as usize * 4 + 4
@@ -118,12 +118,13 @@ impl Hs {
 
     /// Returns `true` if a bundle has `ALES2+5` syllable.
     pub fn is_ales25(&self) -> bool {
-        (self.0 & (HS_SS_BIT | HS_ALS_MASK | HS_CS_MASK)).count_ones() < self.raw_offset() as u32
+        (self.0 & (Self::SS_BIT | Self::ALS_MASK | Self::CS_MASK)).count_ones()
+            < self.raw_offset() as u32
     }
 
     /// Returns the offset to `ALES2+5` syllable.
     pub fn ales25_offset(&self) -> usize {
-        4 + (self.0 & (HS_SS_BIT | HS_ALS_MASK | HS_CS0_BIT)).count_ones() as usize * 4
+        4 + (self.0 & (Self::SS_BIT | Self::ALS_MASK | Self::CS0_BIT)).count_ones() as usize * 4
     }
 }
 
@@ -179,6 +180,16 @@ bitfield! {
 }
 
 impl Ss {
+    pub const CT_OP_NONE: u8 = 0;
+    pub const CT_OP_EXPLICIT: u8 = 1;
+    pub const CT_OP_PREG: u8 = 2;
+    pub const CT_OP_NOT_PREG: u8 = 3;
+    pub const CT_OP_LOOP_END: u8 = 4;
+    pub const CT_OP_NOT_LOOP_END: u8 = 5;
+    pub const CT_OP_PREG_OR_LOOP_END: u8 = 6;
+    pub const CT_OP_NOT_PREG_AND_NOT_LOOP_END: u8 = 7;
+    pub const CT_OP_MLOCK: u8 = 8;
+
     /// A bitmask of `AAS0` and `AAS1`.
     pub fn aas_dst_mask(&self) -> u8 {
         (self.aas_mask() & 5) | (self.aas_mask() >> 1 & 5)
@@ -289,14 +300,39 @@ bitfield! {
     pub u8, mas3, set_mas3: 13, 7;
     pub u8, mas2, set_mas2: 20, 14;
     pub u8, mas0, set_mas0: 27, 21;
+    // wait
+    pub all_c, set_all_c: 0;
+    pub all_e, set_all_e: 1;
+    pub st_c, set_st_c: 2;
+    pub ld_c, set_ld_c: 3;
+    pub fl_c, set_fl_c: 4;
+    pub ma_c, set_ma_c: 5;
+    pub trap, set_trap: 6;
+    // flush
+    pub flushr, set_flushr: 0;
+    pub flushc, set_flushc: 1;
 
-    pub tr, set_tr: 25;
-    pub bn, set_bn: 26;
-    pub bp, set_bp: 27;
+    pub settr, set_settr: 25;
+    pub setbn, set_setbn: 26;
+    pub setbp, set_setbp: 27;
     pub vfrpsz, set_vfrpsz: 28;
+
+    pub u8, op5, set_op5: 31, 27;
+    pub u8, op4, set_op4: 31, 28;
+    pub u8, op3, set_op3: 31, 29;
 }
 
 impl Cs1 {
+    pub const OP5_SETEI: u8 = 0x04;
+    pub const OP5_SETSFT: u8 = 0x05;
+    pub const OP5_WAIT: u8 = 0x06;
+    pub const OP4_SETBP_SETBN: u8 = 0x04;
+    pub const OP4_CALL: u8 = 0x05;
+    pub const OP4_SETMAS: u8 = 0x06;
+    pub const OP4_FLUSH: u8 = 0x07;
+    pub const OP4_VFBG: u8 = 0x08;
+    pub const OP3_SETWD: u8 = 0x00;
+
     pub fn is_lts0(&self) -> bool {
         self.0 & 0xe000_0000 == 0
     }
@@ -313,7 +349,7 @@ bitfield! {
     // vfrpsz
     pub u8, rpsz, set_rpsz: 16, 12;
     // settype
-    pub u32, ty, set_ty: 31, 17;
+    pub u16, ty, set_ty: 31, 17;
 
 }
 
@@ -347,10 +383,19 @@ bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Aas(u16);
     pub am, set_am: 0;
-    pub index, set_index: 5, 1;
-    pub area, set_area: 11, 6;
-    pub op, set_op: 14, 12;
+    pub u8, index, set_index: 5, 1;
+    pub u8, area, set_area: 11, 6;
+    pub u8, op, set_op: 14, 12;
     pub be, set_be: 15;
+}
+
+impl Aas {
+    pub const OP_NONE: u8 = 0;
+    pub const OP_MOVAB: u8 = 1;
+    pub const OP_MOVAH: u8 = 2;
+    pub const OP_MOVAW: u8 = 3;
+    pub const OP_MOVAD: u8 = 4;
+    pub const OP_MOVAQ: u8 = 5;
 }
 
 bitfield! {
@@ -374,8 +419,14 @@ bitfield! {
     pub u8, pred, set_pred: 4, 0;
     pub write, set_write: 5;
     pub u8, lpsrc1, set_lpsrc1: 9, 6;
-    pub u8, lpsrc0, set_lpsrc0: 31, 10;
+    pub u8, lpsrc0, set_lpsrc0: 13, 10;
     pub u8, op, set_op: 15, 14;
+}
+
+impl Clp {
+    pub const OP_ANDP: u8 = 0;
+    pub const OP_LANDP: u8 = 1;
+    pub const OP_MOVEP: u8 = 3;
 }
 
 impl From<u16> for Clp {
@@ -408,15 +459,27 @@ impl Into<u8> for Elp {
     }
 }
 
-bitfield! {
-    #[derive(Copy, Clone, Default, Eq, PartialEq)]
-    pub struct Cds(u32);
-    pub u16, from into Rlp, rlp1, set_rlp1: 15, 0;
-    pub u16, from into Rlp, rlp0, set_rlp0: 31, 16;
+// reverse order
+#[derive(Copy, Clone, Default, Eq, PartialEq)]
+#[repr(transparent)]
+pub struct Cds {
+    pub rlp: [Rlp; 2],
+}
+
+impl Cds {
+    pub fn from_raw(raw: u32) -> Self {
+        Self {
+            rlp: [Rlp((raw >> 16) as u16), Rlp(raw as u16)],
+        }
+    }
+    pub fn into_raw(self) -> u32 {
+        (self.rlp[0].0 as u32) << 16 | self.rlp[1].0 as u32
+    }
 }
 
 bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
+    #[repr(transparent)]
     pub struct Rlp(u16);
     pub u8, psrc, set_psrc: 6, 0;
     pub u8, invert_mask, set_invert_mask: 9, 7;
@@ -432,14 +495,17 @@ bitfield! {
     pub mrgc, set_mrgc: 15;
 }
 
-impl From<u16> for Rlp {
-    fn from(value: u16) -> Rlp {
-        Rlp(value)
+impl Rlp {
+    pub fn is_some(&self) -> bool {
+        self.0 != 0
     }
-}
-
-impl Into<u16> for Rlp {
-    fn into(self) -> u16 {
-        self.0
+    pub fn is_none(&self) -> bool {
+        self.0 == 0
+    }
+    pub fn check_channel(&self, i: usize) -> bool {
+        self.cluster() == (i >= 3) && self.alc_mask() & 1 << i % 3 != 0
+    }
+    pub fn check_channel_am(&self, i: usize) -> bool {
+        self.cluster() == (i >= 3) && ((i == 2 || i == 5) && self.am())
     }
 }
