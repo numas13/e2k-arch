@@ -1,3 +1,5 @@
+//! Low-level representations of syllables.
+
 use bitfield::bitfield;
 
 pub const HS_SS_BIT: u32 = 1 << 12;
@@ -6,43 +8,88 @@ pub const HS_CS0_BIT: u32 = 1 << 14;
 pub const HS_ALS_MASK: u32 = 0x3f << 26;
 
 bitfield! {
+    /// A header syllable.
+    ///
+    /// The header comes as first and required syllable of every bundle.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Hs(u32);
+    /// An offset to a middle of bundle in 32-bit units minus one.
     pub u8, raw_offset, set_raw_offset: 3, 0;
+    /// A size of bundle in 64-bit units minus one.
     pub u8, raw_len, set_raw_len: 6, 4;
+    /// A latency of a bundle minus one.
+    ///
+    /// Increasing the value cause bubbles between bundles because CPU executes them in-order. It
+    /// can be useful if a bundle depends on a long latency operation of previous bundle to
+    /// prevent a hardware hazard detection.
     pub u8, raw_nop, set_raw_nop: 9, 7;
+    /// A loop mode execution.
     pub loop_mode, set_loop_mode: 10;
+    /// TODO
     pub sim, set_sim: 11;
+    /// A presence of stubs syllable.
     pub ss, set_ss: 12;
+    /// TODO
     pub mdl, set_mdl: 13;
+    /// A bitmask of control command syllables.
     pub u8, cs_mask, set_cs_mask: 15, 14;
+    /// A presence of a 1st control commands syllable.
     pub cs0, set_cs0: 14;
+    /// A presence of a 2nd control commands syllable.
     pub cs1, set_cs1: 15;
+    /// A count of conditional execution syllables.
     pub u8, cds_len, set_cds_len: 17, 16;
+    /// A count of logical predicate processing syllables.
     pub u8, pls_len, set_pls_len: 19, 18;
+    /// A bitmask of half-syllable extensions for arithmetic logic channels.
     pub u8, ales_mask, set_ales_mask: 25, 20;
+    /// A presence of `ALES0`.
     pub ales0, set_ales0: 20;
+    /// A presence of `ALES1`.
     pub ales1, set_ales1: 21;
+    /// A presence of `ALES2`.
+    ///
+    /// Note that, actual presence of `ALES2` depends on instruction because till version 4
+    /// the half-syllable was not defined but the bit was used as an additional opcode bit.
+    /// Since version 4 such instructions maps to `0x01` extension opcode but the actual
+    /// presence of the half-syllable in such cases is not required until `ALES5` used
+    /// for instruction in channel 5.
     pub ales2, set_ales2: 22;
+    /// A presence of `ALES3`.
     pub ales3, set_ales3: 23;
+    /// A presence of `ALES4`.
     pub ales4, set_ales4: 24;
+    /// A presence of `ALES5`.
+    ///
+    /// Note that, actual presence of `ALES5` depends on instruction because till version 4
+    /// the half-syllable was not defined but the bit was used as an additional opcode bit.
+    /// Since version 4 such instructions maps to `0x01` extension opcode but the actual
+    /// presence of the half-syllable in such cases is not required until `ALES2` used
+    /// for instruction in channel 2.
     pub ales5, set_ales5: 25;
+    /// A bitmask of arithmetic logic channels syllables.
     pub u8, als_mask, set_als_mask: 31, 26;
+    /// A presence of `ALS0`.
     pub als0, set_als0: 26;
+    /// A presence of `ALS1`.
     pub als1, set_als1: 27;
+    /// A presence of `ALS2`.
     pub als2, set_als2: 28;
+    /// A presence of `ALS3`.
     pub als3, set_als3: 29;
+    /// A presence of `ALS4`.
     pub als4, set_als4: 30;
+    /// A presence of `ALS5`.
     pub als5, set_als5: 31;
 }
 
 impl Hs {
-    /// Returns the offset in bytes to a middle of the bundle.
+    /// Returns the offset in bytes to a middle of bundle.
     pub fn offset(&self) -> usize {
         self.raw_offset() as usize * 4 + 4
     }
 
-    /// Sets the offset to a middle of the bundle.
+    /// Sets the offset to a middle of bundle.
     ///
     /// # Panics
     ///
@@ -53,12 +100,12 @@ impl Hs {
         self.set_raw_offset(offset as u8 / 4 - 1)
     }
 
-    /// Returns the length of the bundle.
+    /// Returns the length of bundle.
     pub fn len(&self) -> usize {
         self.raw_len() as usize * 8 + 8
     }
 
-    /// Sets the length of the bundle to `new_len`.
+    /// Sets the length of bundle to `new_len`.
     ///
     /// # Panics
     ///
@@ -69,7 +116,7 @@ impl Hs {
         self.set_raw_len(new_len as u8 / 8 - 1)
     }
 
-    /// Returns `true` if the bundle has `ALES2+5` syllable.
+    /// Returns `true` if a bundle has `ALES2+5` syllable.
     pub fn is_ales25(&self) -> bool {
         (self.0 & (HS_SS_BIT | HS_ALS_MASK | HS_CS_MASK)).count_ones() < self.raw_offset() as u32
     }
@@ -81,30 +128,54 @@ impl Hs {
 }
 
 bitfield! {
+    /// The syllable for short instructions.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Ss(u32);
+    /// A predicate register for a conditional control transfer.
     pub u8, ct_pred, set_ct_pred: 4, 0;
+    /// A control transfer opcode.
     pub u8, ct_op, set_ct_op: 8, 5;
     // TODO: SS[9]
-    pub u8, ct_ctpr, set_ct_stpr: 11, 10;
+    /// A pipeline register for a control transfer.
+    pub u8, ct_ctpr, set_ct_ctpr: 11, 10;
+    /// A bitmask of control command syllables.
+    /// A bitmask of half-syllables for arrays access units.
     pub u8, aas_mask, set_aas_mask: 15, 12;
+    /// A presence of `AAS0` and `AAS2`.
     pub aas2, set_aas2: 12;
+    /// A presence of `AAS0` and `AAS3`.
     pub aas3, set_aas3: 13;
+    /// A presence of `AAS1` and `AAS4`.
     pub aas4, set_aas4: 14;
+    /// A presence of `AAS1` and `AAS5`.
     pub aas5, set_aas5: 15;
+    /// Increment a cycle counter if branch was taken.
     pub alct, set_alct: 16;
+    /// Increment a cycle counter if branch was not taken.
     pub alcf, set_alcf: 17;
+    /// Increment a base for rotated predicate registers if branch was taken.
     pub abpt, set_abpt: 18;
+    /// Increment a base for rotated predicate registers if branch was not taken.
     pub abpf, set_abpf: 19;
+    // TODO: SS[20]
+    /// Increment a base for rotated registers if branch was taken.
     pub abnt, set_abnt: 21;
+    /// Increment a base for rotated registers if branch was not taken.
     pub abnf, set_abnf: 22;
+    /// Decrement a base for rotated global registers.
     pub abgd, set_abgd: 23;
+    /// Increment a base for rotated global registers.
     pub abgi, set_abgi: 24;
     // TODO: SS[25]
+    /// TODO
     pub vfdi, set_vfdi: 26;
+    /// TODO
     pub srp, set_srp: 27;
+    /// Begin an arrays async prefetch.
     pub bap, set_bap: 28;
+    /// End an arrays async prefetch.
     pub eap, set_eap: 29;
+    /// TODO: Instruction prefetch depth.
     pub u8, ipd, set_ipd: 31, 30;
 }
 

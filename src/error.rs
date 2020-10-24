@@ -1,5 +1,6 @@
 use core::fmt;
 
+/// The error type for decoding/encoding bundles.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     NeedMoreBytes(usize),

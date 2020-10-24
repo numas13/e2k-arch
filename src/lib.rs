@@ -1,5 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
-pub mod error;
+mod error;
 pub mod raw;
 mod util;
+
+pub use crate::error::Error;
