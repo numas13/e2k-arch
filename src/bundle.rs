@@ -5,8 +5,9 @@ use crate::{
     alc::Alc,
     cu::{Control0, Control1, Ct, Ipd, Nop, Short},
     plu::Plu,
-    Error,
+    Error, InsertInto,
 };
+use core::convert::TryFrom;
 use core::fmt;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -57,7 +58,7 @@ impl Bundle {
             ct: Ct::from_raw(&bundle.ss),
             ipd: Ipd::new_truncate(bundle.ss.ipd()),
             short: Short::from_raw(&bundle.ss),
-            alc: Alc::from_raw(bundle)?,
+            alc: Alc::try_from(bundle)?,
             control0,
             control1,
             aau: Aau::unpack_from(bundle),
@@ -90,7 +91,13 @@ impl Bundle {
                 bundle.lts_count += 1;
             }
         }
-        self.alc.pack_into(&mut bundle);
+        self.alc.insert_into(&mut bundle);
+        let e2 = bundle.ales[2].op();
+        let e5 = bundle.ales[5].op();
+        if (e2 == 0x00 || e2 == 0x01) && (e5 == 0x00 || e5 == 0x01) {
+            bundle.ales[2].0 = 0;
+            bundle.ales[5].0 = 0;
+        }
         self.plu.pack_into(&mut bundle);
         bundle.lts_count = self.lts_count;
         for i in 0..self.lts_count {

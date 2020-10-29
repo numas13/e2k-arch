@@ -15,7 +15,31 @@ newtype! {
     #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
     pub struct Index(u8) {
         const MASK = 0x1f;
-        const FMT = "ind = {}";
+        const FMT = "%aaind{}";
+    }
+}
+
+newtype! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
+    pub struct Sti(u8) {
+        const MASK = 0x1f;
+        const FMT = "%aasti{}";
+    }
+}
+
+newtype! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
+    pub struct Aad(u8) {
+        const MASK = 0x3f;
+        const FMT = "%aad{}";
+    }
+}
+
+newtype! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
+    pub struct Incr(u8) {
+        const MASK = 0x07;
+        const FMT = "%aaincr{}";
     }
 }
 
@@ -142,8 +166,14 @@ impl Instr {
     pub fn print(&self, fmt: &mut fmt::Formatter, channel: usize) -> fmt::Result {
         writeln!(
             fmt,
-            "{},{} {}, {}, am = {}, be = {}, {}",
-            self.opcode, channel, self.area, self.index, self.am as u8, self.be as u8, self.dst
+            "{},{} {}, index = {}, am = {}, be = {}, {}",
+            self.opcode,
+            channel,
+            self.area,
+            self.index.get(),
+            self.am as u8,
+            self.be as u8,
+            self.dst
         )
     }
 }

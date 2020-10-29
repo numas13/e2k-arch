@@ -16,6 +16,10 @@ mod util;
 pub use crate::bundle::Bundle;
 pub use crate::error::Error;
 
+trait InsertInto<T> {
+    fn insert_into(self, raw: &mut T);
+}
+
 #[cfg(test)]
 const TEST_BUNDLES_PATHS: &[&str] = &[
     "test-data/bundle-64-bytes.bin",

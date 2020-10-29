@@ -11,6 +11,7 @@ exclude = ["test-data/"]
 
 [dependencies]
 bitfield = "0.13"
+num_enum = "0.5"
 
 [features]
 default = ["no-std"]

@@ -85,7 +85,7 @@ pub struct Unpacked {
     /// The syllable for second group control commands.
     pub cs1: Cs1,
     /// The half-syllable extensions for arithmetic logic channels.
-    pub ales: [Option<Ales>; 6],
+    pub ales: [Ales; 6],
     /// The destination for array access unit channels.
     pub aas_dst: [u8; 4],
     /// The half-syllables for array access unit channels.
@@ -162,8 +162,8 @@ impl Unpacked {
         }
         if self.hs.is_ales25() {
             let val = read_u32()?;
-            self.ales[2] = Some(Ales((val >> 16) as u16));
-            self.ales[5] = Some(Ales(val as u16));
+            self.ales[2] = Ales((val >> 16) as u16);
+            self.ales[5] = Ales(val as u16);
         }
         let offset = self.hs.offset();
         if self.hs.cs1() {
@@ -188,7 +188,7 @@ impl Unpacked {
         let ales_mask = self.hs.ales_mask();
         for &i in [0, 1, 3, 4].iter() {
             if ales_mask & 1 << i != 0 {
-                self.ales[i] = Some(Ales(read_u16()?));
+                self.ales[i] = Ales(read_u16()?);
             }
         }
         let aas_mask = self.ss.aas_mask();
@@ -302,9 +302,9 @@ impl Unpacked {
         if self.hs.cs0() {
             write_u32(self.cs0.0)?;
         }
-        if self.ales[2].is_some() || self.ales[5].is_some() {
-            let ales2 = self.ales[2].map(|i| i.0).unwrap_or_default();
-            let ales5 = self.ales[5].map(|i| i.0).unwrap_or_default();
+        if self.ales[2].0 != 0 || self.ales[5].0 != 0 {
+            let ales2 = self.ales[2].0;
+            let ales5 = self.ales[5].0;
             write_u32((ales2 as u32) << 16 | ales5 as u32)?;
         }
         if self.hs.cs1() {
@@ -328,9 +328,10 @@ impl Unpacked {
             }
         };
         for i in &[0, 1, 3, 4] {
-            if let Some(ales) = self.ales[*i] {
+            let ales = self.ales[*i].0;
+            if ales != 0 {
                 if self.hs.ales_mask() & 1 << *i != 0 {
-                    write_u16(ales.0)?;
+                    write_u16(ales)?;
                 }
             }
         }

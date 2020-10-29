@@ -1,83 +1,59 @@
-mod operands;
+pub mod instr;
 pub mod state;
 
-pub use operands::*;
-
+use self::instr::operands::SrcCond;
+use self::instr::Instr;
 use crate::plu::state::Pred;
-use crate::raw::syllable::{Ales, Als, Rlp};
+use crate::raw::syllable::Rlp;
+use crate::raw::syllable::{Ales, Als};
 use crate::raw::Unpacked;
-use crate::Error;
+use crate::{Error, InsertInto};
+use core::convert::TryFrom;
 use core::fmt;
+use num_enum::FromPrimitive;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct ShortInstr {
-    pub op: u8,
-    pub src1: u8,
-    pub src2: u8,
-    pub dst: u8,
-    pub ale: bool,
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, FromPrimitive)]
+#[repr(u8)]
+pub enum Index {
+    C0,
+    C1,
+    C2,
+    C3,
+    C4,
+    #[num_enum(default)]
+    C5,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct LongInstr {
-    pub op1: u8,
-    pub op2: u8,
-    pub src1: u8,
-    pub src2: u8,
-    pub src3: u8,
-    pub dst: u8,
+#[derive(Copy, Clone)]
+pub struct Raw {
+    pub channel: Index,
+    pub version: u8,
+    pub als: Als,
+    pub ales: Ales,
+    pub cond: Option<SrcCond>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Instr {
-    Short(ShortInstr),
-    Long(LongInstr),
-}
-
-impl Instr {
-    pub fn pack_into(self, bundle: &mut Unpacked, sm: bool, index: usize) {
-        let mut als = Als::default();
-        als.set_sm(sm);
-        match self {
-            Self::Short(i) => {
-                als.set_op(i.op);
-                als.set_src1(i.src1);
-                als.set_src2(i.src2);
-                als.set_dst(i.dst);
-                if i.ale {
-                    bundle.hs.set_ales_mask(bundle.hs.ales_mask() | 1 << index);
-                }
-            }
-            Self::Long(i) => {
-                als.set_op(i.op1);
-                als.set_src1(i.src1);
-                als.set_src2(i.src2);
-                als.set_dst(i.dst);
-                let mut ales = Ales::default();
-                ales.set_op(i.op2);
-                ales.set_src3(i.src3);
-                bundle.hs.set_ales_mask(bundle.hs.ales_mask() | 1 << index);
-                bundle.ales[index] = Some(ales);
-            }
-        }
-        bundle.hs.set_als_mask(bundle.hs.als_mask() | 1 << index);
-        bundle.als[index] = als;
+impl Raw {
+    fn src1(&self) -> u8 {
+        self.als.src1()
     }
-    fn print(&self, i: usize, sm: bool, fmt: &mut fmt::Formatter) -> fmt::Result {
-        let sm = if sm { ",sm" } else { "" };
-        match self {
-            Self::Short(s) => {
-                write!(fmt, "alc_unknown({:02x}),{}{}", s.op, i, sm)?;
-                write!(fmt, " {:#02x}, {:#02x}, {:#02x}", s.src1, s.src2, s.dst)
-            }
-            Self::Long(l) => {
-                write!(fmt, "alc_unknown({:02x}:{:02x}),{}{}", l.op2, l.op1, i, sm)?;
-                write!(
-                    fmt,
-                    " {:#02x}, {:#02x}, {:#02x}, {:#02x}",
-                    l.src1, l.src2, l.src3, l.dst
-                )
-            }
+    fn cmp_op(&self) -> u8 {
+        self.als.cmp_op()
+    }
+}
+
+impl Default for Raw {
+    fn default() -> Self {
+        let mut als = Als::default();
+        als.set_src1(0xc0);
+        let mut ales = Ales::default();
+        ales.set_src3(0xc0);
+        Self {
+            channel: Index::C0,
+            version: 1,
+            als,
+            ales,
+            cond: None,
         }
     }
 }
@@ -99,6 +75,15 @@ impl Cond {
     }
 }
 
+impl fmt::Display for Cond {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        if self.invert {
+            write!(fmt, "~")?;
+        }
+        write!(fmt, "{}", self.pred)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Am {
     pub pred: Pred,
@@ -114,17 +99,9 @@ impl Am {
     }
 }
 
-impl fmt::Display for Cond {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if self.invert {
-            write!(fmt, "~")?;
-        }
-        write!(fmt, "{}", self.pred)
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Channel {
+    pub index: Index,
     pub sm: bool,
     pub instr: Instr,
     pub cond: Option<Cond>,
@@ -134,34 +111,27 @@ pub struct Channel {
 impl Channel {
     fn from_raw(bundle: &Unpacked, i: usize) -> Self {
         let als = bundle.als[i];
-        let instr = if let Some(ales) = bundle.ales[i] {
-            if ales.0 != 0 {
-                Instr::Long(LongInstr {
-                    op1: als.op(),
-                    op2: ales.op(),
-                    src1: als.src1(),
-                    src2: als.src2(),
-                    src3: ales.src3(),
-                    dst: als.dst(),
-                })
+        let ales =
+            if (i == 2 || i == 5) && bundle.hs.ales_mask() & 1 << i != 0 && bundle.ales[i].0 == 0 {
+                Ales(0x01c0)
             } else {
-                Instr::Short(ShortInstr {
-                    op: als.op(),
-                    src1: als.src1(),
-                    src2: als.src2(),
-                    dst: als.dst(),
-                    ale: bundle.hs.ales_mask() & 1 << i != 0,
-                })
-            }
-        } else {
-            Instr::Short(ShortInstr {
-                op: als.op(),
-                src1: als.src1(),
-                src2: als.src2(),
-                dst: als.dst(),
-                ale: bundle.hs.ales_mask() & 1 << i != 0,
-            })
+                bundle.ales[i]
+            };
+        let cond = bundle
+            .rlp_iter()
+            .find(|rlp| rlp.mrgc() && rlp.check_channel(i))
+            .map(|rlp| SrcCond {
+                invert: rlp.invert_mask() & 1 << i % 3 != 0,
+                pred: Pred::from_raw(rlp.psrc()),
+            });
+        let raw = Raw {
+            channel: Index::from_primitive(i as u8),
+            version: u8::MAX,
+            als,
+            ales,
+            cond,
         };
+        let instr = Instr::try_from(&raw).unwrap();
         let cond = bundle
             .rlp_iter()
             .find(|rlp| !rlp.mrgc() && rlp.check_channel(i))
@@ -176,6 +146,7 @@ impl Channel {
                 pred: Pred::from_raw(rlp.psrc()),
             });
         Channel {
+            index: Index::try_from(i as u8).unwrap(),
             sm: als.sm(),
             instr,
             cond,
@@ -183,7 +154,19 @@ impl Channel {
         }
     }
     fn pack_into(&self, channel: usize, bundle: &mut Unpacked) {
-        self.instr.pack_into(bundle, self.sm, channel);
+        let raw = self
+            .instr
+            .into_raw(u8::MAX, Index::from_primitive(channel as u8))
+            .unwrap();
+        bundle.hs.set_als_mask(bundle.hs.als_mask() | 1 << channel);
+        bundle.als[channel] = raw.als;
+        if raw.ales.op() != 0 {
+            bundle
+                .hs
+                .set_ales_mask(bundle.hs.ales_mask() | 1 << channel);
+            bundle.ales[channel] = raw.ales;
+        }
+
         if let Some(cond) = self.cond {
             if let Some(rlp) = bundle.find_rlp_mut(channel, cond.pred.into_raw()) {
                 rlp.set_alc_mask(rlp.alc_mask() | 1 << channel % 3);
@@ -200,13 +183,6 @@ impl Channel {
             }
         }
     }
-    fn print(&self, i: usize, fmt: &mut fmt::Formatter) -> fmt::Result {
-        self.instr.print(i, self.sm, fmt)?;
-        if let Some(cond) = self.cond {
-            write!(fmt, " ? {}", cond)?;
-        }
-        writeln!(fmt)
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -214,21 +190,25 @@ pub struct Alc {
     pub channels: [Option<Channel>; 6],
 }
 
-impl Alc {
-    pub fn from_raw(bundle: &Unpacked) -> Result<Self, Error> {
+impl TryFrom<&'_ Unpacked> for Alc {
+    type Error = Error;
+    fn try_from(raw: &Unpacked) -> Result<Self, Self::Error> {
         let mut channels = [None; 6];
         for i in 0..6 {
-            if bundle.hs.als_mask() & 1 << i == 0 {
+            if raw.hs.als_mask() & 1 << i == 0 {
                 continue;
             }
-            channels[i] = Some(Channel::from_raw(bundle, i));
+            channels[i] = Some(Channel::from_raw(raw, i));
         }
         Ok(Self { channels })
     }
-    pub fn pack_into(&self, bundle: &mut Unpacked) {
+}
+
+impl InsertInto<Unpacked> for Alc {
+    fn insert_into(self, raw: &mut Unpacked) {
         for (i, channel) in self.channels.iter().enumerate() {
             if let Some(channel) = channel {
-                channel.pack_into(i, bundle);
+                channel.pack_into(i, raw);
             }
         }
     }
@@ -236,9 +216,22 @@ impl Alc {
 
 impl fmt::Display for Alc {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        for (i, channel) in self.channels.iter().enumerate() {
-            if let Some(channel) = channel {
-                channel.print(i, fmt)?;
+        for i in self.channels.iter().filter_map(|i| *i) {
+            i.instr.print(fmt, i.index as usize, i.sm)?;
+            if let Some(cond) = i.cond {
+                write!(fmt, " ? {}", cond)?;
+            }
+            writeln!(fmt)?;
+            match i.instr {
+                Instr::OpAlaod(_, arr, _) | Instr::OpAstore(_, _, arr) => {
+                    if let Some(incr) = arr.incr {
+                        write!(fmt, "incr,{} {}", i.index as u8, incr)?;
+                        if let Some(cond) = i.am {
+                            write!(fmt, " ? {}", cond.pred)?;
+                        }
+                    }
+                }
+                _ => (),
             }
         }
         Ok(())

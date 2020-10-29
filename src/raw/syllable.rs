@@ -253,10 +253,24 @@ bitfield! {
     /// | `0xc0..=0xdf` | `imm5` or an additional opcode    |
     /// | `0xe0..=0xff` | `%g0..=%g31`                      |
     pub u8, src1, set_src1: 23, 16;
+    // sync array access
+    pub u8, aa_lts, set_aa_lts: 9, 8;
+    pub aa_inc, set_aa_inc: 10;
+    pub aa_is_ind, set_aa_is_ind: 11;
+    pub u8, aa_incr, set_aa_incr: 14, 12;
+    pub u8, aa_ind, set_aa_ind: 18, 15;
+    pub u8, aa_sti, set_aa_sti: 18, 15;
+    pub u8, aa_aad, set_aa_aad: 23, 19;
     /// An opcode.
     pub u8, op, set_op: 30, 24;
     /// A speculative mode execution.
     pub sm, set_sm: 31;
+}
+
+impl Als {
+    pub fn aa_is_sti(&self) -> bool {
+        !self.aa_is_ind()
+    }
 }
 
 bitfield! {
