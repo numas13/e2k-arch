@@ -214,10 +214,10 @@ impl InsertInto<Unpacked> for Alc {
     }
 }
 
-impl fmt::Display for Alc {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+impl Alc {
+    pub fn print(&self, lts: &[u32; 4], fmt: &mut fmt::Formatter) -> fmt::Result {
         for i in self.channels.iter().filter_map(|i| *i) {
-            i.instr.print(fmt, i.index as usize, i.sm)?;
+            instr::print_instr(&i.instr, fmt, i.index as usize, i.sm, lts)?;
             if let Some(cond) = i.cond {
                 write!(fmt, " ? {}", cond)?;
             }

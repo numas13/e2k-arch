@@ -11,7 +11,6 @@ newtype! {
     #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
     pub struct Imm5(u8) {
         const MASK = 0x1f;
-        const FMT = "{}";
     }
 }
 
@@ -19,7 +18,6 @@ newtype! {
     #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
     pub struct Imm4(u8) {
         const MASK = 0x0f;
-        const FMT = "{}";
     }
 }
 
@@ -48,12 +46,6 @@ impl TryFrom<&'_ Raw> for Imm8 {
 impl InsertInto<Raw> for Imm8 {
     fn insert_into(self, raw: &mut Raw) {
         raw.ales.set_src3(self.0)
-    }
-}
-
-impl fmt::Display for Imm8 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:#x}", self.0)
     }
 }
 
@@ -207,15 +199,6 @@ impl InsertInto<Raw> for Src1 {
     }
 }
 
-impl fmt::Display for Src1 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Reg(reg) => fmt::Display::fmt(reg, fmt),
-            Self::Imm(imm) => fmt::Display::fmt(imm, fmt),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Src2 {
     Reg(Reg),
@@ -281,16 +264,6 @@ impl InsertInto<Raw> for Src2 {
     }
 }
 
-impl fmt::Display for Src2 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Reg(reg) => fmt::Display::fmt(reg, fmt),
-            Self::Imm(imm) => fmt::Display::fmt(imm, fmt),
-            Self::Lit(loc) => fmt::Display::fmt(loc, fmt),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Src3(pub Reg);
 
@@ -306,12 +279,6 @@ impl TryFrom<&'_ Raw> for Src3 {
 impl InsertInto<Raw> for Src3 {
     fn insert_into(self, raw: &mut Raw) {
         raw.ales.set_src3(self.0.into_raw())
-    }
-}
-
-impl fmt::Display for Src3 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
     }
 }
 
@@ -333,12 +300,6 @@ impl InsertInto<Raw> for Src4 {
     }
 }
 
-impl fmt::Display for Src4 {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Addr(pub Src1, pub Src2);
 
@@ -353,15 +314,6 @@ impl InsertInto<Raw> for Addr {
     fn insert_into(self, raw: &mut Raw) {
         self.0.insert_into(raw);
         self.1.insert_into(raw);
-    }
-}
-
-impl fmt::Display for Addr {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.1 {
-            Src2::Imm(i) if i.get() == 0 => write!(fmt, "[ {} ]", self.0),
-            _ => write!(fmt, "[ {} + {} ]", self.0, self.1),
-        }
     }
 }
 
@@ -446,27 +398,8 @@ impl InsertInto<Raw> for Dst {
     }
 }
 
-impl fmt::Display for Dst {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Reg(reg) => fmt::Display::fmt(reg, fmt),
-            Self::Tst => fmt.write_str("%tst"),
-            Self::Tc => fmt.write_str("%tc"),
-            Self::Tcd => fmt.write_str("%tcd"),
-            Self::Ctpr(ctpr) => fmt::Display::fmt(ctpr, fmt),
-            Self::Empty => fmt.write_str("%empty"),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct DstPreg(Preg);
-
-impl fmt::Display for DstPreg {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
-    }
-}
+pub struct DstPreg(pub Preg);
 
 impl TryFrom<u8> for DstPreg {
     type Error = Error;
@@ -491,12 +424,6 @@ impl InsertInto<Raw> for DstPreg {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SrcState(pub StateReg);
 
-impl fmt::Display for SrcState {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
-    }
-}
-
 impl TryFrom<&'_ Raw> for SrcState {
     type Error = Error;
     fn try_from(raw: &Raw) -> Result<Self, Self::Error> {
@@ -514,12 +441,6 @@ impl InsertInto<Raw> for SrcState {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct DstState(pub StateReg);
-
-impl fmt::Display for DstState {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Display::fmt(&self.0, fmt)
-    }
-}
 
 impl TryFrom<&'_ Raw> for DstState {
     type Error = Error;

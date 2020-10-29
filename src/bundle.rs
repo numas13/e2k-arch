@@ -122,7 +122,7 @@ impl fmt::Display for Bundle {
             writeln!(fmt, "{}", self.ipd)?;
         }
         fmt::Display::fmt(&self.short, fmt)?;
-        fmt::Display::fmt(&self.alc, fmt)?;
+        self.alc.print(&self.lts, fmt)?;
         if let Some(control0) = self.control0 {
             control0.print(fmt, self.ct.as_ref())?;
         }
