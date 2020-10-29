@@ -284,7 +284,7 @@ decl! {
         getfs(w, w, w) { 0x1e[C0,C1,C2,C3,C4,C5] }
         getfd(d, d, d) { 0x1f[C0,C1,C2,C3,C4,C5] }
         fadds(w, w, w) { 0x30[C0,C1,C3,C4], 0x30(Ex2)[C2,C5] v:4 }
-        faddd(d, d, d) { 0x31(Ex2)[C2,C5] v:4, 0x31[C0,C1,C3,C4] }
+        faddd(d, d, d) { 0x31[C0,C1,C3,C4], 0x31(Ex2)[C2,C5] v:4 }
         fsubs(w, w, w) { 0x32[C0,C1,C3,C4], 0x32(Ex2)[C2,C5] v:4 }
         fsubd(d, d, d) { 0x33[C0,C1,C3,C4], 0x33(Ex2)[C2,C5] v:4 }
         fmins(w, w, w) { 0x34[C0,C1,C3,C4] }
@@ -392,8 +392,8 @@ decl! {
         packushb(d, d, d) { 0x09(Ex1)[C1,C4] }
         packsswh(d, d, d) { 0x0a(Ex1)[C1,C4] }
         psrlw(d, d, d) { 0x10(Ex1)[C1,C4], 0x10(Ex2)[C0,C3] v:3 }
-        psrlh(d, d, d) { 0x11(Ex2)[C0,C3] v:3, 0x11(Ex1)[C1,C4] }
-        psraw(d, d, d) { 0x12(Ex2)[C0,C3] v:3, 0x12(Ex1)[C1,C4] }
+        psrlh(d, d, d) { 0x11(Ex1)[C1,C4], 0x11(Ex2)[C0,C3] v:3 }
+        psraw(d, d, d) { 0x12(Ex1)[C1,C4], 0x12(Ex2)[C0,C3] v:3 }
         psrah(d, d, d) { 0x13(Ex1)[C1,C4], 0x13(Ex2)[C0,C3] v:3 }
         psllw(d, d, d) { 0x14(Ex1)[C1,C4], 0x14(Ex2)[C0,C3] v:3 }
         psllh(d, d, d) { 0x15(Ex1)[C1,C4], 0x15(Ex2)[C0,C3] v:3 }
@@ -411,15 +411,15 @@ decl! {
         puttc(d, d, d) { 0x25(Ex1)[C0] }
         fscales(w, w, w) { 0x24(Ex1)[C1,C4] v:4 }
         fscaled(d, w, d) { 0x25(Ex1)[C1,C4] v:4 }
-        pfadds(d, d, d) { 0x30(Ex1)[C2,C5] v:4, 0x30(Ex1)[C0,C1,C3,C4] }
+        pfadds(d, d, d) { 0x30(Ex1)[C0,C1,C3,C4], 0x30(Ex1)[C2,C5] v:4 }
         pfaddd(d, d, d) { 0x31(Ex1)[C0,C1,C3,C4], 0x31(Ex1)[C2,C5] v:4 }
-        pfsubs(d, d, d) { 0x32(Ex1)[C2,C5] v:4, 0x32(Ex1)[C0,C1,C3,C4] }
-        pfsubd(d, d, d) { 0x33(Ex1)[C2,C5] v:4, 0x33(Ex1)[C0,C1,C3,C4] }
+        pfsubs(d, d, d) { 0x32(Ex1)[C0,C1,C3,C4], 0x32(Ex1)[C2,C5] v:4 }
+        pfsubd(d, d, d) { 0x33(Ex1)[C0,C1,C3,C4], 0x33(Ex1)[C2,C5] v:4 }
         pfmins(d, d, d) { 0x34(Ex1)[C0,C1,C3,C4] }
         pfmind(d, d, d) { 0x35(Ex1)[C0,C1,C3,C4] }
         pfmaxs(d, d, d) { 0x36(Ex1)[C0,C1,C3,C4] }
         pfmaxd(d, d, d) { 0x37(Ex1)[C0,C1,C3,C4] }
-        pfmuls(d, d, d) { 0x38(Ex1)[C2,C5] v:4, 0x38(Ex1)[C0,C1,C3,C4] }
+        pfmuls(d, d, d) { 0x38(Ex1)[C0,C1,C3,C4], 0x38(Ex1)[C2,C5] v:4 }
         pfmuld(d, d, d) { 0x39(Ex1)[C0,C1,C3,C4] }
         fdivs(w, w, w) { 0x48(Ex1)[C5] }
         fdivd(d, d, d) { 0x49(Ex1)[C5] }
@@ -505,53 +505,6 @@ decl! {
         xornd_fd(d, d, w) { 0x0b(Ex7)[C0,C3] }
         addd_fd(d, d, w) { 0x11(Ex7)[C0,C3] }
         subd_fd(d, d, w) { 0x13(Ex7)[C0,C3] }
-        pfadd_adds(d, d, d) { 0x00(Exe)[C0,C1,C3,C4] v:2, 0x00(Exe)[C2,C5] v:4 }
-        pfadd_addd(d, d, d) { 0x01(Exe)[C2,C5] v:4, 0x01(Exe)[C0,C1,C3,C4] v:2 }
-        pfsub_adds(d, d, d) { 0x02(Exe)[C2,C5] v:4, 0x02(Exe)[C0,C1,C3,C4] v:2 }
-        pfsub_addd(d, d, d) { 0x03(Exe)[C0,C1,C3,C4] v:2, 0x03(Exe)[C2,C5] v:4 }
-        pfhadd_adds(d, d, d) { 0x04(Exe)[C2,C5] v:4, 0x04(Exe)[C0,C1,C3,C4] v:3 }
-        pfhsub_adds(d, d, d) { 0x06(Exe)[C0,C1,C3,C4] v:3, 0x06(Exe)[C2,C5] v:4 }
-        pfmul_adds(d, d, d) { 0x08(Exe)[C0,C1,C3,C4], 0x08(Exe)[C2,C5] v:4 }
-        pfmul_addd(d, d, d) { 0x09(Exe)[C2,C5] v:4, 0x09(Exe)[C0,C1,C3,C4] }
-        pfaddsub_adds(d, d, d) { 0x0e(Exe)[C0,C1,C3,C4] v:3, 0x0e(Exe)[C2,C5] v:4 }
-        pfadd_subs(d, d, d) { 0x20(Exe)[C2,C5] v:4, 0x20(Exe)[C0,C1,C3,C4] v:2 }
-        pfadd_subd(d, d, d) { 0x21(Exe)[C2,C5] v:4, 0x21(Exe)[C0,C1,C3,C4] v:2 }
-        pfsub_subs(d, d, d) { 0x22(Exe)[C2,C5] v:4, 0x22(Exe)[C0,C1,C3,C4] v:2 }
-        pfsub_subd(d, d, d) { 0x23(Exe)[C0,C1,C3,C4] v:2, 0x23(Exe)[C2,C5] v:4 }
-        pfhadd_subs(d, d, d) { 0x24(Exe)[C2,C5] v:4, 0x24(Exe)[C0,C1,C3,C4] v:3 }
-        pfhsub_subs(d, d, d) { 0x26(Exe)[C0,C1,C3,C4] v:3, 0x26(Exe)[C2,C5] v:4 }
-        pfmul_subs(d, d, d) { 0x28(Exe)[C0,C1,C3,C4], 0x28(Exe)[C2,C5] v:4 }
-        pfmul_subd(d, d, d) { 0x29(Exe)[C2,C5] v:4, 0x29(Exe)[C0,C1,C3,C4] }
-        pfaddsub_subs(d, d, d) { 0x2e(Exe)[C2,C5] v:4, 0x2e(Exe)[C0,C1,C3,C4] v:3 }
-        pfadd_hadds(d, d, d) { 0x40(Exe)[C0,C1,C3,C4] v:3, 0x40(Exe)[C2,C5] v:4 }
-        pfsub_hadds(d, d, d) { 0x42(Exe)[C0,C1,C3,C4] v:3, 0x42(Exe)[C2,C5] v:4 }
-        pfhadd_hadds(d, d, d) { 0x44(Exe)[C0,C1,C3,C4] v:3, 0x44(Exe)[C2,C5] v:4 }
-        pfhsub_hadds(d, d, d) { 0x46(Exe)[C2,C5] v:4, 0x46(Exe)[C0,C1,C3,C4] v:3 }
-        pfmul_hadds(d, d, d) { 0x48(Exe)[C0,C1,C3,C4] v:3, 0x48(Exe)[C2,C5] v:4 }
-        pfaddsub_hadds(d, d, d) { 0x4e(Exe)[C0,C1,C3,C4] v:3, 0x4e(Exe)[C2,C5] v:4 }
-        pfadd_hsubs(d, d, d) { 0x60(Exe)[C0,C1,C3,C4] v:3, 0x60(Exe)[C2,C5] v:4 }
-        pfsub_hsubs(d, d, d) { 0x62(Exe)[C2,C5] v:4, 0x62(Exe)[C0,C1,C3,C4] v:3 }
-        pfhadd_hsubs(d, d, d) { 0x64(Exe)[C0,C1,C3,C4] v:3, 0x64(Exe)[C2,C5] v:4 }
-        pfhsub_hsubs(d, d, d) { 0x66(Exe)[C2,C5] v:4, 0x66(Exe)[C0,C1,C3,C4] v:3 }
-        pfmul_hsubs(d, d, d) { 0x68(Exe)[C2,C5] v:4, 0x68(Exe)[C0,C1,C3,C4] v:3 }
-        pfaddsub_hsubs(d, d, d) { 0x6e(Exe)[C0,C1,C3,C4] v:3, 0x6e(Exe)[C2,C5] v:4 }
-        pfadd_rsubs(d, d, d) { 0x20(Exf)[C2,C5] v:4, 0x20(Exf)[C0,C1,C3,C4] v:2 }
-        pfadd_rsubd(d, d, d) { 0x21(Exf)[C2,C5] v:4, 0x21(Exf)[C0,C1,C3,C4] v:2 }
-        pfsub_rsubs(d, d, d) { 0x22(Exf)[C0,C1,C3,C4] v:2, 0x22(Exf)[C2,C5] v:4 }
-        pfsub_rsubd(d, d, d) { 0x23(Exf)[C2,C5] v:4, 0x23(Exf)[C0,C1,C3,C4] v:2 }
-        pfhadd_rsubs(d, d, d) { 0x24(Exf)[C0,C1,C3,C4] v:3, 0x24(Exf)[C2,C5] v:4 }
-        pfhsub_rsubs(d, d, d) { 0x26(Exf)[C2,C5] v:4, 0x26(Exf)[C0,C1,C3,C4] v:3 }
-        pfmul_rsubs(d, d, d) { 0x28(Exf)[C2,C5] v:4, 0x28(Exf)[C0,C1,C3,C4] }
-        pfmul_rsubd(d, d, d) { 0x29(Exf)[C0,C1,C3,C4], 0x29(Exf)[C2,C5] v:4 }
-        pfaddsub_rsubs(d, d, d) { 0x2e(Exf)[C0,C1,C3,C4] v:3, 0x2e(Exf)[C2,C5] v:4 }
-        pshufb(d, d, d) { 0x4d(Exf)[C0,C1,C3,C4] v:2 }
-        pfadd_addsubs(d, d, d) { 0x60(Exf)[C2,C5] v:4, 0x60(Exf)[C0,C1,C3,C4] v:3 }
-        pfsub_addsubs(d, d, d) { 0x62(Exf)[C0,C1,C3,C4] v:3, 0x62(Exf)[C2,C5] v:4 }
-        pfhadd_addsubs(d, d, d) { 0x64(Exf)[C0,C1,C3,C4] v:3, 0x64(Exf)[C2,C5] v:4 }
-        pfhsub_addsubs(d, d, d) { 0x66(Exf)[C2,C5] v:4, 0x66(Exf)[C0,C1,C3,C4] v:3 }
-        pfmul_addsubs(d, d, d) { 0x68(Exf)[C0,C1,C3,C4] v:3, 0x68(Exf)[C2,C5] v:4 }
-        pmerge(d, d, d) { 0x6d(Exf)[C0,C1,C3,C4] v:2 }
-        pfaddsub_addsubs(d, d, d) { 0x6e(Exf)[C0,C1,C3,C4] v:3, 0x6e(Exf)[C2,C5] v:4 }
     }
     Op4(src1: Src1, src2: Src2, src3: Src3, dst: Dst) {
         scls_fb(w, w, w, w) { 0x14(Ex4)[C0,C3] }
@@ -836,24 +789,71 @@ decl! {
         getf_subd(d, d, d, d) { 0x3f(Exa)[C1,C4] }
         insfs(w, w, w, w) { 0x6c(Exb)[C0,C1,C3,C4] v:4 }
         insfd(d, d, d, d) { 0x6d(Exb)[C0,C1,C3,C4] }
-        fadd_adds(w, w, w, w) { 0x00(Exc)[C2,C5] v:4, 0x00(Exc)[C0,C1,C3,C4] v:2 }
+        fadd_adds(w, w, w, w) { 0x00(Exc)[C0,C1,C3,C4] v:2, 0x00(Exc)[C2,C5] v:4 }
         fadd_addd(d, d, d, d) { 0x01(Exc)[C0,C1,C3,C4] v:2, 0x01(Exc)[C2,C5] v:4 }
-        fsub_adds(w, w, w, w) { 0x02(Exc)[C2,C5] v:4, 0x02(Exc)[C0,C1,C3,C4] v:2 }
-        fsub_addd(d, d, d, d) { 0x03(Exc)[C2,C5] v:4, 0x03(Exc)[C0,C1,C3,C4] v:2 }
+        fsub_adds(w, w, w, w) { 0x02(Exc)[C0,C1,C3,C4] v:2, 0x02(Exc)[C2,C5] v:4 }
+        fsub_addd(d, d, d, d) { 0x03(Exc)[C0,C1,C3,C4] v:2, 0x03(Exc)[C2,C5] v:4 }
         fmul_adds(w, w, w, w) { 0x08(Exc)[C0,C1,C3,C4], 0x08(Exc)[C2,C5] v:4 }
         fmul_addd(d, d, d, d) { 0x09(Exc)[C0,C1,C3,C4], 0x09(Exc)[C2,C5] v:4 }
-        fadd_subs(w, w, w, w) { 0x20(Exc)[C2,C5] v:4, 0x20(Exc)[C0,C1,C3,C4] v:2 }
-        fadd_subd(d, d, d, d) { 0x21(Exc)[C2,C5] v:4, 0x21(Exc)[C0,C1,C3,C4] v:2 }
+        fadd_subs(w, w, w, w) { 0x20(Exc)[C0,C1,C3,C4] v:2, 0x20(Exc)[C2,C5] v:4 }
+        fadd_subd(d, d, d, d) { 0x21(Exc)[C0,C1,C3,C4] v:2, 0x21(Exc)[C2,C5] v:4 }
         fsub_subs(w, w, w, w) { 0x22(Exc)[C0,C1,C3,C4] v:2, 0x22(Exc)[C2,C5] v:4 }
         fsub_subd(d, d, d, d) { 0x23(Exc)[C0,C1,C3,C4] v:2, 0x23(Exc)[C2,C5] v:4 }
-        fmul_subs(w, w, w, w) { 0x28(Exc)[C2,C5] v:4, 0x28(Exc)[C0,C1,C3,C4] }
+        fmul_subs(w, w, w, w) { 0x28(Exc)[C0,C1,C3,C4], 0x28(Exc)[C2,C5] v:4 }
         fmul_subd(d, d, d, d) { 0x29(Exc)[C0,C1,C3,C4], 0x29(Exc)[C2,C5] v:4 }
         fadd_rsubs(w, w, w, w) { 0x20(Exd)[C0,C1,C3,C4] v:2, 0x20(Exd)[C2,C5] v:4 }
-        fadd_rsubd(d, d, d, d) { 0x21(Exd)[C2,C5] v:4, 0x21(Exd)[C0,C1,C3,C4] v:2 }
-        fsub_rsubs(w, w, w, w) { 0x22(Exd)[C2,C5] v:4, 0x22(Exd)[C0,C1,C3,C4] v:2 }
+        fadd_rsubd(d, d, d, d) { 0x21(Exd)[C0,C1,C3,C4] v:2, 0x21(Exd)[C2,C5] v:4 }
+        fsub_rsubs(w, w, w, w) { 0x22(Exd)[C0,C1,C3,C4] v:2, 0x22(Exd)[C2,C5] v:4 }
         fsub_rsubd(d, d, d, d) { 0x23(Exd)[C0,C1,C3,C4] v:2, 0x23(Exd)[C2,C5] v:4 }
         fmul_rsubs(w, w, w, w) { 0x28(Exd)[C0,C1,C3,C4], 0x28(Exd)[C2,C5] v:4 }
-        fmul_rsubd(d, d, d, d) { 0x29(Exd)[C2,C5] v:4, 0x29(Exd)[C0,C1,C3,C4] }
+        fmul_rsubd(d, d, d, d) { 0x29(Exd)[C0,C1,C3,C4], 0x29(Exd)[C2,C5] v:4 }
+        pfadd_adds(d, d, d, d) { 0x00(Exe)[C0,C1,C3,C4] v:2, 0x00(Exe)[C2,C5] v:4 }
+        pfadd_addd(d, d, d, d) { 0x01(Exe)[C0,C1,C3,C4] v:2, 0x01(Exe)[C2,C5] v:4 }
+        pfsub_adds(d, d, d, d) { 0x02(Exe)[C0,C1,C3,C4] v:2, 0x02(Exe)[C2,C5] v:4 }
+        pfsub_addd(d, d, d, d) { 0x03(Exe)[C0,C1,C3,C4] v:2, 0x03(Exe)[C2,C5] v:4 }
+        pfhadd_adds(d, d, d, d) { 0x04(Exe)[C0,C1,C3,C4] v:3, 0x04(Exe)[C2,C5] v:4 }
+        pfhsub_adds(d, d, d, d) { 0x06(Exe)[C0,C1,C3,C4] v:3, 0x06(Exe)[C2,C5] v:4 }
+        pfmul_adds(d, d, d, d) { 0x08(Exe)[C0,C1,C3,C4], 0x08(Exe)[C2,C5] v:4 }
+        pfmul_addd(d, d, d, d) { 0x09(Exe)[C0,C1,C3,C4], 0x09(Exe)[C2,C5] v:4 }
+        pfaddsub_adds(d, d, d, d) { 0x0e(Exe)[C0,C1,C3,C4] v:3, 0x0e(Exe)[C2,C5] v:4 }
+        pfadd_subs(d, d, d, d) { 0x20(Exe)[C0,C1,C3,C4] v:2, 0x20(Exe)[C2,C5] v:4 }
+        pfadd_subd(d, d, d, d) { 0x21(Exe)[C0,C1,C3,C4] v:2, 0x21(Exe)[C2,C5] v:4 }
+        pfsub_subs(d, d, d, d) { 0x22(Exe)[C0,C1,C3,C4] v:2, 0x22(Exe)[C2,C5] v:4 }
+        pfsub_subd(d, d, d, d) { 0x23(Exe)[C0,C1,C3,C4] v:2, 0x23(Exe)[C2,C5] v:4 }
+        pfhadd_subs(d, d, d, d) { 0x24(Exe)[C0,C1,C3,C4] v:3, 0x24(Exe)[C2,C5] v:4 }
+        pfhsub_subs(d, d, d, d) { 0x26(Exe)[C0,C1,C3,C4] v:3, 0x26(Exe)[C2,C5] v:4 }
+        pfmul_subs(d, d, d, d) { 0x28(Exe)[C0,C1,C3,C4], 0x28(Exe)[C2,C5] v:4 }
+        pfmul_subd(d, d, d, d) { 0x29(Exe)[C0,C1,C3,C4], 0x29(Exe)[C2,C5] v:4 }
+        pfaddsub_subs(d, d, d, d) { 0x2e(Exe)[C0,C1,C3,C4] v:3, 0x2e(Exe)[C2,C5] v:4 }
+        pfadd_hadds(d, d, d, d) { 0x40(Exe)[C0,C1,C3,C4] v:3, 0x40(Exe)[C2,C5] v:4 }
+        pfsub_hadds(d, d, d, d) { 0x42(Exe)[C0,C1,C3,C4] v:3, 0x42(Exe)[C2,C5] v:4 }
+        pfhadd_hadds(d, d, d, d) { 0x44(Exe)[C0,C1,C3,C4] v:3, 0x44(Exe)[C2,C5] v:4 }
+        pfhsub_hadds(d, d, d, d) { 0x46(Exe)[C0,C1,C3,C4] v:3, 0x46(Exe)[C2,C5] v:4 }
+        pfmul_hadds(d, d, d, d) { 0x48(Exe)[C0,C1,C3,C4] v:3, 0x48(Exe)[C2,C5] v:4 }
+        pfaddsub_hadds(d, d, d, d) { 0x4e(Exe)[C0,C1,C3,C4] v:3, 0x4e(Exe)[C2,C5] v:4 }
+        pfadd_hsubs(d, d, d, d) { 0x60(Exe)[C0,C1,C3,C4] v:3, 0x60(Exe)[C2,C5] v:4 }
+        pfsub_hsubs(d, d, d, d) { 0x62(Exe)[C0,C1,C3,C4] v:3, 0x62(Exe)[C2,C5] v:4 }
+        pfhadd_hsubs(d, d, d, d) { 0x64(Exe)[C0,C1,C3,C4] v:3, 0x64(Exe)[C2,C5] v:4 }
+        pfhsub_hsubs(d, d, d, d) { 0x66(Exe)[C0,C1,C3,C4] v:3, 0x66(Exe)[C2,C5] v:4 }
+        pfmul_hsubs(d, d, d, d) { 0x68(Exe)[C0,C1,C3,C4] v:3, 0x68(Exe)[C2,C5] v:4 }
+        pfaddsub_hsubs(d, d, d, d) { 0x6e(Exe)[C0,C1,C3,C4] v:3, 0x6e(Exe)[C2,C5] v:4 }
+        pfadd_rsubs(d, d, d, d) { 0x20(Exf)[C0,C1,C3,C4] v:2, 0x20(Exf)[C2,C5] v:4 }
+        pfadd_rsubd(d, d, d, d) { 0x21(Exf)[C0,C1,C3,C4] v:2, 0x21(Exf)[C2,C5] v:4 }
+        pfsub_rsubs(d, d, d, d) { 0x22(Exf)[C0,C1,C3,C4] v:2, 0x22(Exf)[C2,C5] v:4 }
+        pfsub_rsubd(d, d, d, d) { 0x23(Exf)[C0,C1,C3,C4] v:2, 0x23(Exf)[C2,C5] v:4 }
+        pfhadd_rsubs(d, d, d, d) { 0x24(Exf)[C0,C1,C3,C4] v:3, 0x24(Exf)[C2,C5] v:4 }
+        pfhsub_rsubs(d, d, d, d) { 0x26(Exf)[C0,C1,C3,C4] v:3, 0x26(Exf)[C2,C5] v:4 }
+        pfmul_rsubs(d, d, d, d) { 0x28(Exf)[C0,C1,C3,C4], 0x28(Exf)[C2,C5] v:4 }
+        pfmul_rsubd(d, d, d, d) { 0x29(Exf)[C0,C1,C3,C4], 0x29(Exf)[C2,C5] v:4 }
+        pfaddsub_rsubs(d, d, d, d) { 0x2e(Exf)[C0,C1,C3,C4] v:3, 0x2e(Exf)[C2,C5] v:4 }
+        pshufb(d, d, d, d) { 0x4d(Exf)[C0,C1,C3,C4] v:2 }
+        pfadd_addsubs(d, d, d, d) { 0x60(Exf)[C0,C1,C3,C4] v:3, 0x60(Exf)[C2,C5] v:4 }
+        pfsub_addsubs(d, d, d, d) { 0x62(Exf)[C0,C1,C3,C4] v:3, 0x62(Exf)[C2,C5] v:4 }
+        pfhadd_addsubs(d, d, d, d) { 0x64(Exf)[C0,C1,C3,C4] v:3, 0x64(Exf)[C2,C5] v:4 }
+        pfhsub_addsubs(d, d, d, d) { 0x66(Exf)[C0,C1,C3,C4] v:3, 0x66(Exf)[C2,C5] v:4 }
+        pfmul_addsubs(d, d, d, d) { 0x68(Exf)[C0,C1,C3,C4] v:3, 0x68(Exf)[C2,C5] v:4 }
+        pmerge(d, d, d, d) { 0x6d(Exf)[C0,C1,C3,C4] v:2 }
+        pfaddsub_addsubs(d, d, d, d) { 0x6e(Exf)[C0,C1,C3,C4] v:3, 0x6e(Exf)[C2,C5] v:4 }
     }
     Op2cmp(src2: Src2, dst: DstPreg) {
         cctopo(w) { 0x24[C0,C1,C3,C4] if cmp_op == 0 }
@@ -1000,8 +1000,8 @@ decl! {
         stdsq(w, w, q) { 0x03[C5], 0x03(Ex1)[C2] } // pair
         stesq(w, w, q) { 0x04[C5], 0x04(Ex1)[C2] } // pair
         stfsq(w, w, q) { 0x05[C5], 0x05(Ex1)[C2] } // pair
-        stgsq(w, w, q) { 0x06(Ex1)[C2], 0x06[C5] } // pair
-        stssq(w, w, q) { 0x07(Ex1)[C2], 0x07[C5] } // pair
+        stgsq(w, w, q) { 0x06[C5], 0x06(Ex1)[C2] } // pair
+        stssq(w, w, q) { 0x07[C5], 0x07(Ex1)[C2] } // pair
         ldcsq(w, w, q) { 0x42(Ex1)[C0,C2,C3,C5] } // pair
         lddsq(w, w, q) { 0x43(Ex1)[C0,C2,C3,C5] } // pair
         ldesq(w, w, q) { 0x44(Ex1)[C0,C2,C3,C5] } // pair
