@@ -1,4 +1,7 @@
-#![cfg_attr(all(not(test), feature = "no_std"), no_std)]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+#[cfg(not(feature = "std"))]
+compile_error!("currently do not support build with no std feature");
 
 #[macro_use]
 mod macros;
@@ -8,13 +11,16 @@ pub mod alc;
 pub mod cu;
 pub mod plu;
 pub mod raw;
+pub mod state;
 
 mod bundle;
-mod error;
 mod util;
 
+pub use crate::aau::Aau;
+pub use crate::alc::Alc;
 pub use crate::bundle::Bundle;
-pub use crate::error::Error;
+pub use crate::cu::Cu;
+pub use crate::plu::Plu;
 
 trait InsertInto<T> {
     fn insert_into(self, raw: &mut T);
@@ -29,4 +35,5 @@ const TEST_BUNDLES_PATHS: &[&str] = &[
     "test-data/bundle-hs-only.bin",
     "test-data/bundle-64bit-lts.bin",
     "test-data/bundle-lts-staab.bin",
+    "test-data/bundle-setwd-lts.bin",
 ];

@@ -94,3 +94,19 @@ macro_rules! newtype {
     );
     (@body $name:ident, $ty:ty, ) => ();
 }
+
+macro_rules! bitfield_from_into {
+    ($t:ty, $r:ty) => {
+        impl From<$r> for $t {
+            fn from(value: $r) -> Self {
+                Self(value)
+            }
+        }
+
+        impl Into<$r> for $t {
+            fn into(self) -> $r {
+                self.0
+            }
+        }
+    };
+}

@@ -1,3 +1,13 @@
+[dependencies]
+bitfield = "0.13.2"
+num_enum = "0.5.1"
+# TODO: no_std https://github.com/dtolnay/thiserror/pull/64
+thiserror = "1.0.21"
+
+[features]
+default = ["std"]
+std = []
+
 [package]
 name = "e2k-arch"
 version = "0.1.0"
@@ -8,11 +18,3 @@ repository = "https://github.com/numas13/e2k-arch"
 keywords = ["e2k", "isa", "decode", "encode"]
 edition = "2018"
 exclude = ["test-data/"]
-
-[dependencies]
-bitfield = "0.13"
-num_enum = "0.5"
-
-[features]
-default = ["no-std"]
-no-std = []

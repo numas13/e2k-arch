@@ -1,5 +1,5 @@
-//! Low-level representations of syllables.
-
+use super::operand::Operand;
+use super::types::*;
 use bitfield::bitfield;
 
 bitfield! {
@@ -20,11 +20,11 @@ bitfield! {
     pub u8, raw_nop, set_raw_nop: 9, 7;
     /// A loop mode execution.
     pub loop_mode, set_loop_mode: 10;
-    /// TODO
+    /// TODO: SS[sim]
     pub sim, set_sim: 11;
     /// A presence of stubs syllable.
     pub ss, set_ss: 12;
-    /// TODO
+    /// TODO: SS[mdl]
     pub mdl, set_mdl: 13;
     /// A bitmask of control commands syllables.
     pub u8, cs_mask, set_cs_mask: 15, 14;
@@ -126,19 +126,26 @@ impl Hs {
     pub fn ales25_offset(&self) -> usize {
         4 + (self.0 & (Self::SS_BIT | Self::ALS_MASK | Self::CS0_BIT)).count_ones() as usize * 4
     }
+    pub fn is_set_als(&self, index: usize) -> bool {
+        self.als_mask() & 1 << index != 0
+    }
+    pub fn set_als(&mut self, index: usize) {
+        self.set_als_mask(self.als_mask() | 1 << index);
+    }
+    pub fn is_set_ales(&self, index: usize) -> bool {
+        self.ales_mask() & 1 << index != 0
+    }
+    pub fn set_ales(&mut self, index: usize) {
+        self.set_ales_mask(self.ales_mask() | 1 << index);
+    }
 }
 
 bitfield! {
     /// The syllable for short instructions.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Ss(u32);
-    /// A predicate register for a conditional control transfer.
-    pub u8, ct_pred, set_ct_pred: 4, 0;
-    /// A control transfer opcode.
-    pub u8, ct_op, set_ct_op: 8, 5;
-    // TODO: SS[9]
-    /// A pipeline register for a control transfer.
-    pub u8, ct_ctpr, set_ct_ctpr: 11, 10;
+    /// Control transfer.
+    pub u16, from into Ct, ct, set_ct: 11, 0;
     /// A bitmask of half-syllables for arrays access units.
     pub u8, aas_mask, set_aas_mask: 15, 12;
     /// A presence of `AAS0` and `AAS2`.
@@ -167,33 +174,57 @@ bitfield! {
     /// Increment a base for rotated global registers.
     pub abgi, set_abgi: 24;
     // TODO: SS[25]
-    /// TODO
+    // TODO: doc SS[vfdi]
     pub vfdi, set_vfdi: 26;
-    /// TODO
+    // TODO: doc SS[srp]
     pub srp, set_srp: 27;
     /// Begin an arrays async prefetch.
     pub bap, set_bap: 28;
     /// End an arrays async prefetch.
     pub eap, set_eap: 29;
-    /// TODO: Instruction prefetch depth.
+    /// TODO: doc Instruction prefetch depth.
     pub u8, ipd, set_ipd: 31, 30;
 }
 
 impl Ss {
-    pub const CT_OP_NONE: u8 = 0;
-    pub const CT_OP_EXPLICIT: u8 = 1;
-    pub const CT_OP_PREG: u8 = 2;
-    pub const CT_OP_NOT_PREG: u8 = 3;
-    pub const CT_OP_LOOP_END: u8 = 4;
-    pub const CT_OP_NOT_LOOP_END: u8 = 5;
-    pub const CT_OP_PREG_OR_LOOP_END: u8 = 6;
-    pub const CT_OP_NOT_PREG_AND_NOT_LOOP_END: u8 = 7;
-    pub const CT_OP_MLOCK: u8 = 8;
-
     /// A bitmask of `AAS0` and `AAS1`.
     pub fn aas_dst_mask(&self) -> u8 {
         (self.aas_mask() & 5) | (self.aas_mask() >> 1 & 5)
     }
+    pub fn is_set_aas(&self, index: u8) -> bool {
+        self.aas_mask() & 1 << index != 0
+    }
+    pub fn set_aas(&mut self, index: u8) {
+        self.set_aas_mask(self.aas_mask() | 1 << index);
+    }
+}
+
+bitfield_from_into!(Ct, u16);
+bitfield! {
+    #[derive(Copy, Clone, Default, Eq, PartialEq)]
+    pub struct Ct(u16);
+    /// A predicate register for a conditional control transfer.
+    pub u8, preg, set_preg: 4, 0;
+    /// A control transfer opcode.
+    pub u8, op, set_op: 8, 5;
+    // TODO: SS[9]
+    /// A pipeline register for a control transfer.
+    pub u8, ctpr, set_ctpr: 11, 10;
+}
+
+impl Ct {
+    pub const OP_NONE: u8 = 0x0;
+    pub const OP_EXPLICIT: u8 = 0x1;
+    pub const OP_PREG: u8 = 0x2;
+    pub const OP_NOT_PREG: u8 = 0x3;
+    pub const OP_LOOP_END: u8 = 0x4;
+    pub const OP_NOT_LOOP_END: u8 = 0x5;
+    pub const OP_PREG_OR_LOOP_END: u8 = 0x6;
+    pub const OP_NOT_PREG_AND_NOT_LOOP_END: u8 = 0x7;
+    pub const OP_MLOCK: u8 = 0x8;
+    pub const OP_MLOCK_OR_CMP0: u8 = 0x9;
+    pub const OP_NOT_PREG_OR_LOOP_END: u8 = 0xe;
+    pub const OP_PREG_AND_NOT_LOOP_END: u8 = 0xf;
 }
 
 bitfield! {
@@ -201,7 +232,7 @@ bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Als(u32);
     /// A destination predicate register for compare instructions.
-    pub u8, cmp_dst, set_cmp_dst: 4, 0;
+    pub u8, raw_cmp_dst, set_raw_cmp_dst: 4, 0;
     /// An opcode for compare instructions.
     pub u8, cmp_op, set_cmp_op: 7, 5;
     /// Used as 1st operand for memory write instructions.
@@ -211,7 +242,8 @@ bitfield! {
     /// | `0x00..=0x7f` | `%b[0]..=%b[127]` |
     /// | `0x80..=0xbf` | `%r0..=%r63`      |
     /// | `0xe0..=0xff` | `%g0..=%g31`      |
-    pub u8, src4, set_src4: 7, 0;
+    pub u8, from into Operand, src4, set_src4: 7, 0;
+    pub u8, raw_src4, set_raw_src4: 7, 0;
     /// Used as a destination for most instructions.
     ///
     /// | Value         | Meaning           |
@@ -224,7 +256,8 @@ bitfield! {
     /// | `0xd1..=0xd3` | `%ctpr1..=%ctpr3` |
     /// | `0xbf`        | `%empty`          |
     /// | `0xe0..=0xff` | `%g0..=%g31`      |
-    pub u8, dst, set_dst: 7, 0;
+    pub u8, from into Operand, dst, set_dst: 7, 0;
+    pub u8, raw_dst, set_raw_dst: 7, 0;
     /// Depending on an instruction can be:
     /// * 1st operand if `src1` is used as an additional opcode.
     /// * 2nd operand for most instructions.
@@ -240,7 +273,8 @@ bitfield! {
     /// | `0xd8..=0xdb` | 32-bit `lit` loc                          |
     /// | `0xdc..=0xde` | 64-bit `lit` loc                          |
     /// | `0xe0..=0xff` | `%g0..=%g31`                              |
-    pub u8, src2, set_src2: 15, 8;
+    pub u8, from into Operand, src2, set_src2: 15, 8;
+    pub u8, raw_src2, set_raw_src2: 15, 8;
     /// Depending on an instruction can be:
     /// * 1st operand for most instructions.
     /// * 2nd operand for memory write instructions.
@@ -252,15 +286,16 @@ bitfield! {
     /// | `0x80..=0xbf` | `%r0..=%r63`                      |
     /// | `0xc0..=0xdf` | `imm5` or an additional opcode    |
     /// | `0xe0..=0xff` | `%g0..=%g31`                      |
-    pub u8, src1, set_src1: 23, 16;
+    pub u8, from into Operand, src1, set_src1: 23, 16;
+    pub u8, raw_src1, set_raw_src1: 23, 16;
     // sync array access
     pub u8, aa_lts, set_aa_lts: 9, 8;
     pub aa_inc, set_aa_inc: 10;
     pub aa_is_ind, set_aa_is_ind: 11;
-    pub u8, aa_incr, set_aa_incr: 14, 12;
-    pub u8, aa_ind, set_aa_ind: 18, 15;
-    pub u8, aa_sti, set_aa_sti: 18, 15;
-    pub u8, aa_aad, set_aa_aad: 23, 19;
+    pub u8, raw_aa_incr, set_raw_aa_incr: 14, 12;
+    pub u8, raw_aa_ind, set_raw_aa_ind: 18, 15;
+    pub u8, raw_aa_sti, set_raw_aa_sti: 18, 15;
+    pub u8, raw_aa_aad, set_raw_aa_aad: 23, 19;
     /// An opcode.
     pub u8, op, set_op: 30, 24;
     /// A speculative mode execution.
@@ -268,6 +303,36 @@ bitfield! {
 }
 
 impl Als {
+    pub fn cmp_dst(&self) -> Preg {
+        Preg::new_truncate(self.raw_cmp_dst())
+    }
+    pub fn set_cmp_dst(&mut self, value: Preg) {
+        self.set_raw_cmp_dst(value.get())
+    }
+    pub fn aa_incr(&self) -> Incr {
+        Incr::new_truncate(self.raw_aa_incr())
+    }
+    pub fn set_aa_incr(&mut self, value: Incr) {
+        self.set_raw_aa_incr(value.get());
+    }
+    pub fn aa_ind(&self) -> Index {
+        Index::new_truncate(self.raw_aa_ind())
+    }
+    pub fn set_aa_ind(&mut self, value: Index) {
+        self.set_raw_aa_ind(value.get());
+    }
+    pub fn aa_sti(&self) -> Sti {
+        Sti::new_truncate(self.raw_aa_sti())
+    }
+    pub fn set_aa_sti(&mut self, value: Sti) {
+        self.set_raw_aa_sti(value.get());
+    }
+    pub fn aa_aad(&self) -> Aad {
+        Aad::new_truncate(self.raw_aa_aad())
+    }
+    pub fn set_aa_aad(&mut self, value: Aad) {
+        self.set_raw_aa_aad(value.get());
+    }
     pub fn aa_is_sti(&self) -> bool {
         !self.aa_is_ind()
     }
@@ -284,7 +349,7 @@ bitfield! {
     pub done_fdam, set_done_fdam: 26;
     pub done_trar, set_done_trar: 27;
     // disp, ldisp, sdisp, ibranch, puttsd
-    pub u32, disp, set_disp: 27, 0;
+    pub i32, disp, set_disp: 27, 0;
     pub u8, op, set_op: 29, 28;
     pub u8, ctpr, set_ctpr: 31, 30;
 }
@@ -364,7 +429,25 @@ bitfield! {
     pub u8, rpsz, set_rpsz: 16, 12;
     // settype
     pub u16, ty, set_ty: 31, 17;
+}
 
+impl From<Lts> for Cs1Lts0 {
+    fn from(value: Lts) -> Self {
+        Self(value.0)
+    }
+}
+
+impl Into<Lts> for Cs1Lts0 {
+    fn into(self) -> Lts {
+        Lts(self.0)
+    }
+}
+
+impl Ales {
+    pub const DEFAULT_25_EXT: Self = Self(0x01c0);
+    pub const fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 bitfield! {
@@ -381,7 +464,8 @@ bitfield! {
     /// | `0x00..=0x7f` | `%b[0]..=%b[127]`                 |
     /// | `0x80..=0xbf` | `%r0..=%r63`                      |
     /// | `0xe0..=0xff` | `%g0..=%g31`                      |
-    pub u8, src3, set_src3: 7, 0;
+    pub u8, from into Operand, src3, set_src3: 7, 0;
+    pub u8, raw_src3, set_raw_src3: 7, 0;
     /// An extension opcode.
     pub u8, op, set_op: 15, 8;
 }
@@ -427,13 +511,24 @@ bitfield! {
     pub u8, from into Elp, elp0, set_elp0: 31, 24;
 }
 
+bitfield_from_into!(Clp, u16);
 bitfield! {
+    /// A logical operation.
+    ///
+    /// * CLP0/MLP0 can use @p0, @p1.
+    /// * CLP1/MLP1 can use @p0, @p1, @p2, @p3.
+    /// * CLP2/MLP2 can use @p0, @p1, @p2, @p3, @p4, @p5.
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Clp(u16);
-    pub u8, pred, set_pred: 4, 0;
+    /// A predicate register destination for the operation.
+    pub u8, preg, set_preg: 4, 0;
+    /// The operation writes to a predicate register.
     pub write, set_write: 5;
-    pub u8, lpsrc1, set_lpsrc1: 9, 6;
-    pub u8, lpsrc0, set_lpsrc0: 13, 10;
+    /// A source for an intermediate predicate.
+    pub u8, from into IpSrc, ip_src1, set_ip_src1: 9, 6;
+    /// A source for an intermediate predicate.
+    pub u8, from into IpSrc, ip_src0, set_ip_src0: 13, 10;
+    /// An opcode of the operation.
     pub u8, op, set_op: 15, 14;
 }
 
@@ -443,33 +538,56 @@ impl Clp {
     pub const OP_MOVEP: u8 = 3;
 }
 
-impl From<u16> for Clp {
-    fn from(value: u16) -> Clp {
-        Clp(value)
-    }
+bitfield_from_into!(IpSrc, u8);
+bitfield! {
+    #[derive(Copy, Clone, Default, Eq, PartialEq)]
+    pub struct IpSrc(u8);
+    /// An intermediate predicate.
+    pub u8, ip, set_ip: 2, 0;
+    pub inv, set_inv: 3;
 }
 
-impl Into<u16> for Clp {
-    fn into(self) -> u16 {
-        self.0
-    }
-}
-
-// TODO: Elp
+bitfield_from_into!(Elp, u8);
 bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Elp(u8);
+    u8, raw_pred, set_raw_pred: 6, 0;
+    u8, raw_rndpred, set_raw_rndpred: 5, 0;
 }
 
-impl From<u8> for Elp {
-    fn from(value: u8) -> Elp {
-        Elp(value)
+impl Elp {
+    pub const BGRPRED: u8 = 0xc0;
+    pub const RNDPRED_FLAG: u8 = 0xc0;
+    pub const RNDPRED_FLAG_MASK: u8 = 0xe0;
+    pub fn pred(&self) -> Option<Pred> {
+        if self.0.leading_zeros() >= 1 {
+            Some(Pred(self.raw_pred()))
+        } else {
+            None
+        }
     }
-}
-
-impl Into<u8> for Elp {
-    fn into(self) -> u8 {
-        self.0
+    pub fn set_pred(&mut self, pred: Pred) {
+        self.set_raw_pred(pred.0)
+    }
+    pub fn is_bgrpred(&self) -> bool {
+        self.0 == Self::BGRPRED
+    }
+    pub fn set_bgrpred(&mut self) {
+        self.0 = Self::BGRPRED;
+    }
+    pub fn rndpred(&self) -> Option<u8> {
+        if !self.is_bgrpred() && self.0 & Self::RNDPRED_FLAG_MASK == Self::RNDPRED_FLAG {
+            Some(self.raw_rndpred())
+        } else {
+            None
+        }
+    }
+    /// # Safety
+    ///
+    /// Must not be `bgrpred`.
+    pub unsafe fn set_rndpred(&mut self, value: u8) {
+        self.0 = Self::RNDPRED_FLAG;
+        self.set_raw_rndpred(value)
     }
 }
 
@@ -495,7 +613,7 @@ bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     #[repr(transparent)]
     pub struct Rlp(u16);
-    pub u8, psrc, set_psrc: 6, 0;
+    pub u8, from into Pred, psrc, set_psrc: 6, 0;
     pub u8, invert_mask, set_invert_mask: 9, 7;
     pub invert0, set_invert0: 7;
     pub invert1, set_invert1: 8;
@@ -516,10 +634,16 @@ impl Rlp {
     pub fn is_none(&self) -> bool {
         self.0 == 0
     }
-    pub fn check_channel(&self, i: usize) -> bool {
+    fn is_affect_channel(&self, i: usize) -> bool {
         self.cluster() == (i >= 3) && self.alc_mask() & 1 << i % 3 != 0
     }
+    pub fn check_channel_rlp(&self, i: usize) -> bool {
+        !self.mrgc() && self.is_affect_channel(i)
+    }
     pub fn check_channel_am(&self, i: usize) -> bool {
-        self.cluster() == (i >= 3) && ((i == 2 || i == 5) && self.am())
+        !self.mrgc() && self.cluster() == (i >= 3) && (i == 2 || i == 5) && self.am()
+    }
+    pub fn check_channel_mrgc(&self, i: usize) -> bool {
+        self.mrgc() && self.is_affect_channel(i)
     }
 }

@@ -1,19 +1,199 @@
-mod fmt;
-pub mod operands;
+mod display;
+pub mod operand;
 
-pub use self::fmt::print_instr;
-
-use self::fmt::OperandSizes;
-use self::operands::*;
-use super::{Index, Raw};
-use crate::{Error, InsertInto};
+use self::operand::*;
+use crate::raw::types::Preg;
+use crate::state::lit_loc::LitValue;
+use crate::state::reg::Reg;
+use crate::state::reg::{Size, OP_SIZE_D, OP_SIZE_Q, OP_SIZE_U, OP_SIZE_X};
+use crate::state::state_reg::StateReg;
+use crate::{raw, InsertInto};
 use core::convert::TryFrom;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use core::fmt;
+use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive};
+use thiserror::Error;
+use Ext::*;
+use Index::*;
+
+#[derive(Debug, Error)]
+#[error(
+    "Instruction {name:?} is available in channel {channel} since version {expected} but the target cpu version is {version}"
+)]
+pub struct NotAvailableError {
+    pub name: &'static str,
+    pub channel: usize,
+    pub version: u8,
+    pub expected: u8,
+}
+
+#[derive(Debug, Error)]
+#[error("Instruction {op:02x}:{ext:02x}:{src1:02x} was not found")]
+pub struct NotFoundError {
+    pub op: u8,
+    pub ext: u8,
+    pub src1: u8,
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum DecodeError {
+    #[error("Unknown instruction extension {0:#02x}")]
+    UnknownExt(u8),
+    #[error("Instruction not available")]
+    NotAvailable {
+        #[from]
+        source: NotAvailableError,
+    },
+    #[error("Instruction not found")]
+    NotFound {
+        #[from]
+        source: NotFoundError,
+    },
+    #[error("Failed to decode address")]
+    InvalidAddr {
+        #[from]
+        source: self::operand::src2::DecodeError,
+    },
+    #[error("Failed to decode dst")]
+    InvalidDst {
+        #[from]
+        source: self::operand::dst::DecodeError,
+    },
+    #[error("Failed to decode dst state register")]
+    InvalidDstState,
+    #[error("Merge condition not found")]
+    InvalidMergeCond {
+        #[from]
+        source: self::operand::merge_cond::NotFoundError,
+    },
+    #[error("Failed to decode src2")]
+    InvalidSrc2 {
+        source: self::operand::src2::DecodeError,
+    },
+    #[error("Failed to decode src3")]
+    InvalidSrc3 {
+        source: crate::state::reg::DecodeError,
+    },
+    #[error("Failed to decode src4")]
+    InvalidSrc4 {
+        source: crate::state::reg::DecodeError,
+    },
+    #[error("Failed to decode state register")]
+    InvalidSrcState,
+    #[error("Failed to decode array address")]
+    InvalidArrayAddr {
+        #[from]
+        source: self::operand::addr_array::DecodeError,
+    },
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum EncodeError {
+    #[error("Failed to encode unavailable instruction")]
+    NotAvailable {
+        #[from]
+        source: NotAvailableError,
+    },
+    #[error("Failed to encode missing instruction")]
+    NotFound {
+        #[from]
+        source: NotFoundError,
+    },
+}
+
+#[derive(Copy, Clone)]
+struct OperandSizes(pub u8);
+
+impl OperandSizes {
+    fn next(&mut self) -> Size {
+        let size = Size::new_dxq(self.0);
+        self.0 >>= 2;
+        size
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, FromPrimitive)]
+#[repr(u8)]
+pub enum Index {
+    C0,
+    C1,
+    C2,
+    C3,
+    C4,
+    #[num_enum(default)]
+    C5,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct RawInstr {
+    pub version: u8,
+    pub channel: Index,
+    pub als: raw::Als,
+    pub ales: raw::Ales,
+    pub mrgc: Option<MergeCond>,
+    pub lit: Option<LitValue>,
+}
+
+impl RawInstr {
+    pub fn new(
+        version: u8,
+        channel: usize,
+        als: raw::Als,
+        ales: raw::Ales,
+        mc: Option<MergeCond>,
+        lit: Option<LitValue>,
+    ) -> Self {
+        Self {
+            version,
+            channel: Index::from_primitive(channel as u8),
+            als,
+            ales,
+            mrgc: mc,
+            lit,
+        }
+    }
+    fn src1(&self) -> u8 {
+        self.als.raw_src1()
+    }
+    fn cmp_op(&self) -> u8 {
+        self.als.cmp_op()
+    }
+}
+
+impl Default for RawInstr {
+    fn default() -> Self {
+        let mut als = raw::Als::default();
+        als.set_raw_src1(0xc0);
+        let mut ales = raw::Ales::default();
+        ales.set_raw_src3(0xc0);
+        Self {
+            channel: Index::C0,
+            version: 1,
+            als,
+            ales,
+            mrgc: None,
+            lit: None,
+        }
+    }
+}
+
+impl core::fmt::Debug for RawInstr {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+        fmt.debug_struct("RawInstr")
+            .field("channel", &(self.channel as u8))
+            .field("version", &self.version)
+            .field("als", &self.als.0)
+            .field("ales", &self.ales.0)
+            .field("merge_condition", &self.mrgc)
+            .finish()
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
 pub enum Ext {
-    None,
+    Ex0,
     Ex1,
     Ex2,
     Ex4 = 0x04,
@@ -31,11 +211,11 @@ pub enum Ext {
 }
 
 macro_rules! pattern {
-    ($o:literal, $e:path) => {
-        ($o, $e)
+    ($opcode:literal, $ext:path) => {
+        ($opcode, $ext)
     };
-    ($o:literal) => {
-        ($o, Ext::None)
+    ($opcode:literal) => {
+        ($opcode, Ext::Ex0)
     };
 }
 
@@ -43,15 +223,10 @@ macro_rules! ver {
     () => {
         0
     };
-    ($v:literal) => {
-        $v
+    ($version:literal) => {
+        $version
     };
 }
-
-const OP_SIZE_U: u8 = 0;
-const OP_SIZE_D: u8 = 1;
-const OP_SIZE_X: u8 = 2;
-const OP_SIZE_Q: u8 = 3;
 
 macro_rules! operand_sizes {
     ($s0:ident, $s1:ident, $s2:ident, $s3:ident) => (
@@ -88,133 +263,335 @@ pub struct Opcode {
     pub cmp_op: Option<u8>,
 }
 
-macro_rules! decl {
-    (@opcode $v:ident, $o:literal, $($n:ident = $e:expr),* $(,)?) => {
+macro_rules! opcode {
+    ($version:ident, $opcode:literal, $($field:ident = $value:expr),* $(,)?) => {
         Opcode {
-            version: $v,
-            op: $o,
-            $($n: Some($e),)*
+            version: $version,
+            op: $opcode,
+            $($field: Some($value),)*
             .. Opcode::default()
         }
     };
-    (
-    $(
-        $k:ident($($a:ident: $t:ty),+) {
-            $(
-                $i:ident $(($($s:ident),+))? {
-                    $( $o:literal $(($e:path))? $([$($c:pat),+])? $(v:$v:literal)? $(if $($n:ident == $x:expr),+)? ),+
-                }
-            )+
+}
+
+macro_rules! decl {
+    ($( $kind:ident( $($arg:ident: $arg_ty:ty),+ ) {
+        $( $instr:ident $( ( $($arg_size:ident),+ ) )? {
+            $( $opcode:literal
+                $( ($ext:path) )?
+                $( [$($channel:pat),+] )?
+                $( v:$version:literal )?
+                $( if $( $field:ident == $value:expr ),+ )?
+            ),+
+        } )+
+    } )+) => {
+        $( #[allow(non_camel_case_types)]
+        #[derive(Copy, Clone, PartialEq)]
+        pub enum $kind {
+            $($instr),+
         }
-    )+
-    ) => {
-        $( // types
-            #[allow(non_camel_case_types)]
-            #[derive(Copy, Clone, Debug, PartialEq)]
-            pub enum $k {
-                $($i),+
+
+        impl fmt::Debug for $kind {
+            fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+                fmt.write_str(self.as_str())
             }
+        }
 
-            impl $k {
-                #[allow(unused_variables)]
-                pub fn into_opcode(self, version: u8, chan: Index) -> Option<Opcode> {
-                    match self {
-                        $( // instructions
-                            $( // opcodes
-                                $k::$i if true $(&& matches!(chan, $($c)|+))? => {
-                                    let v = ver!($($v)?);
-                                    Some(decl!(@opcode v, $o, $(ext = $e,)? $($($n = $x),+)?))
-                                },
-                            )+
-                        )+
-                        _ => Option::None,
-                    }
-                }
-
-                pub fn as_str(&self) -> &'static str {
-                    match self {
-                        $( Self::$i => stringify!($i), )+
-                    }
-                }
-
-                pub fn operand_sizes(&self) -> OperandSizes {
-                    match self {
-                        $( Self::$i => OperandSizes(operand_sizes!($($($s),+)?)), )+
-                    }
+        impl $kind {
+            #[allow(unused_variables)]
+            pub fn into_opcode(self, version: u8, channel: usize) -> Result<Option<Opcode>, EncodeError> {
+                let chan = Index::from(channel as u8);
+                let (opcode, name) = match self {
+                    $( $( $kind::$instr if true $(&& matches!(chan, $($channel)|+))? => {
+                        let version = ver!($($version)?);
+                        (
+                            opcode!(
+                                version,
+                                $opcode,
+                                $(ext = $ext,)?
+                                $($($field = $value),+)?
+                            ),
+                            stringify!($instr),
+                        )
+                    }, )+ )+
+                    _ => return Ok(None),
+                };
+                if opcode.version <= version {
+                    Ok(Some(opcode))
+                } else {
+                    Err(EncodeError::NotAvailable {
+                        source: NotAvailableError { version, channel, expected: opcode.version, name }
+                    })
                 }
             }
-        )+
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $( Self::$instr => stringify!($instr), )+
+                }
+            }
+            fn operand_sizes(&self) -> OperandSizes {
+                let value = match self {
+                    $( Self::$instr => operand_sizes!( $( $($arg_size),+ )? ), )+
+                };
+                OperandSizes(value)
+            }
+        } )+
 
-        #[derive(Copy, Clone, Debug, PartialEq)]
-        pub enum Desc {
-            $($k(u8, $k),)+
-        }
+        // #[derive(Copy, Debug, Clone, PartialEq)]
+        // pub enum Instr {
+        //     $( $kind( $kind, $($arg_ty),+ ) ),+
+        // }
 
-        #[derive(Copy, Clone, Debug, PartialEq)]
-        pub enum Instr {
-            $($k($k, $($t),+),)+
-        }
-
-        impl TryFrom<&'_ Raw> for Instr {
-            type Error = Error;
-            fn try_from(raw: &Raw) -> Result<Self, Error> {
-                let ext = Ext::try_from(raw.ales.op()).map_err(|_| Error::UnknownExt)?;
+        impl Desc {
+            pub fn new(raw: &RawInstr) -> Result<Option<(u8, Desc)>, DecodeError> {
+                let ext = Ext::try_from(raw.ales.op())
+                    .map_err(|_| DecodeError::UnknownExt(raw.ales.op()))?;
                 let desc = match (raw.als.op(), ext) {
-                    $( // types
-                        $( // instructions
-                            $( // opcodes
-                                pattern!($o $(,$e)?)
-                                if true
-                                    $(&& matches!(raw.channel, $($c)|+))? // match channels
-                                    $($(&& raw.$n() == $x)+)? // match fields
-                                => Desc::$k(ver!($($v)?), $k::$i),
-                            )+
-                        )+
-                    )+
-                    _ => return Err(Error::Unknown),
+                    $( $( $( pattern!($opcode $(,$ext)?) if true
+                            $( && matches!(raw.channel, $($channel)|+) )?
+                            $( $( && raw.$field() == $value)+ )?
+                        => (ver!( $($version)? ), Desc::$kind($kind::$instr)),
+                    )+ )+ )+
+                    _ => return Ok(None),
                 };
-                let instr = match desc {
-                    $(
-                        Desc::$k(v, o) if v <= raw.version => {
-                            Instr::$k(o, $(<$t>::try_from(raw)?),+)
-                        },
-                    )+
-                    _ => return Err(Error::Version(desc)),
-                };
-                Ok(instr)
-            }
-        }
-
-        impl Instr {
-            pub fn into_raw(self, version: u8, channel: Index) -> Result<Raw, Error> {
-                let mut raw = Raw::default();
-                let opcode = match self {
-                    $( // types
-                        Self::$k(o, $($a),+) => {
-                            let opcode = o.into_opcode(version, channel).ok_or(Error::OpcodeNotFound)?;
-                            $($a.insert_into(&mut raw);)+
-                            opcode
-                        },
-                    )+
-                };
-                raw.als.set_op(opcode.op);
-                if let Some(ext) = opcode.ext {
-                    raw.ales.set_op(ext as u8);
-                }
-                if let Some(src1) = opcode.src1 {
-                    raw.als.set_src1(src1);
-                }
-                if let Some(cmp_op) = opcode.cmp_op {
-                    raw.als.set_cmp_op(cmp_op);
-                }
-                Ok(raw)
+                Ok(Some(desc))
             }
         }
     };
 }
 
-use Ext::*;
-use Index::*;
+#[derive(Copy, Clone, Debug)]
+pub enum Desc {
+    Op2(Op2),
+    Op3(Op3),
+    Op4(Op4),
+    Op2cmp(Op2cmp),
+    Op3cmp(Op3cmp),
+    Op3mrgc(Op3mrgc),
+    Op4mrgc(Op4mrgc),
+    Op3imm8(Op3imm8),
+    Op4imm8(Op4imm8),
+    Op3load(Op3load),
+    Op3store(Op3store),
+    Op2rw(Op2rw),
+    Op2rr(Op2rr),
+    OpAload(OpAload),
+    OpAstore(OpAstore),
+}
+
+impl Desc {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Desc::Op2(op) => op.as_str(),
+            Desc::Op3(op) => op.as_str(),
+            Desc::Op4(op) => op.as_str(),
+            Desc::Op2cmp(op) => op.as_str(),
+            Desc::Op3cmp(op) => op.as_str(),
+            Desc::Op3mrgc(op) => op.as_str(),
+            Desc::Op4mrgc(op) => op.as_str(),
+            Desc::Op3imm8(op) => op.as_str(),
+            Desc::Op4imm8(op) => op.as_str(),
+            Desc::Op3load(op) => op.as_str(),
+            Desc::Op3store(op) => op.as_str(),
+            Desc::Op2rw(op) => op.as_str(),
+            Desc::Op2rr(op) => op.as_str(),
+            Desc::OpAload(op) => op.as_str(),
+            Desc::OpAstore(op) => op.as_str(),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum Instr {
+    Op2(Op2, Src2, Dst),
+    Op3(Op3, Src1, Src2, Dst),
+    Op4(Op4, Src1, Src2, Reg, Dst),
+    Op2cmp(Op2cmp, Src2, Preg),
+    Op3cmp(Op3cmp, Src1, Src2, Preg),
+    Op3mrgc(Op3mrgc, Src1, Src2, Dst, MergeCond),
+    Op4mrgc(Op4mrgc, Src1, Src2, Reg, Dst, MergeCond),
+    Op3imm8(Op3imm8, Src2, u8, Dst),
+    Op4imm8(Op4imm8, Src1, Src2, u8, Dst),
+    Op3load(Op3load, Addr, Dst),
+    Op3store(Op3store, Reg, Addr),
+    Op2rw(Op2rw, Src2, StateReg),
+    Op2rr(Op2rr, StateReg, Dst),
+    OpAload(OpAload, AddrArray, Dst),
+    OpAstore(OpAstore, Reg, AddrArray),
+}
+
+impl Instr {
+    pub fn display<'a>(&'a self, channel: u8, sm: bool) -> impl fmt::Display + 'a {
+        self::display::Display::new(self, channel, sm)
+    }
+    pub fn into_raw(self, version: u8, channel: usize) -> Result<RawInstr, EncodeError> {
+        let mut raw = RawInstr::default();
+        let opcode = match self {
+            Self::Op2(op, src2, dst) => {
+                dst.insert_into(&mut raw);
+                src2.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3(op, src1, src2, dst) => {
+                dst.insert_into(&mut raw);
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op4(op, src1, src2, src3, dst) => {
+                dst.insert_into(&mut raw);
+                raw.ales.set_src3(src3.into());
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op2cmp(op, src2, dst) => {
+                raw.als.set_cmp_dst(dst);
+                src2.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3cmp(op, src1, src2, dst) => {
+                raw.als.set_cmp_dst(dst);
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3mrgc(op, src1, src2, dst, mrgc) => {
+                mrgc.insert_into(&mut raw);
+                dst.insert_into(&mut raw);
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op4mrgc(op, src1, src2, src3, dst, mrgc) => {
+                mrgc.insert_into(&mut raw);
+                dst.insert_into(&mut raw);
+                raw.ales.set_src3(src3.into());
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3imm8(op, src2, imm8, dst) => {
+                dst.insert_into(&mut raw);
+                raw.ales.set_raw_src3(imm8);
+                src2.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op4imm8(op, src1, src2, imm8, dst) => {
+                dst.insert_into(&mut raw);
+                raw.ales.set_raw_src3(imm8);
+                src2.insert_into(&mut raw);
+                src1.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3load(op, addr, dst) => {
+                dst.insert_into(&mut raw);
+                addr.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op3store(op, src4, addr) => {
+                addr.insert_into(&mut raw);
+                raw.als.set_src4(src4.into());
+                op.into_opcode(version, channel)
+            }
+            Self::Op2rw(op, src2, dst) => {
+                raw.als.set_raw_dst(dst as u8);
+                src2.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::Op2rr(op, src, dst) => {
+                dst.insert_into(&mut raw);
+                raw.als.set_raw_src1(src as u8);
+                op.into_opcode(version, channel)
+            }
+            Self::OpAload(op, addr, dst) => {
+                dst.insert_into(&mut raw);
+                addr.insert_into(&mut raw);
+                op.into_opcode(version, channel)
+            }
+            Self::OpAstore(op, src4, addr) => {
+                addr.insert_into(&mut raw);
+                raw.als.set_src4(src4.into());
+                op.into_opcode(version, channel)
+            }
+        };
+        let opcode = opcode?.ok_or_else(|| EncodeError::NotFound {
+            source: NotFoundError {
+                op: raw.als.op(),
+                ext: raw.ales.op(),
+                src1: raw.als.raw_src1(),
+            },
+        })?;
+        raw.als.set_op(opcode.op);
+        if let Some(ext) = opcode.ext {
+            raw.ales.set_op(ext as u8);
+        }
+        if let Some(src1) = opcode.src1 {
+            raw.als.set_raw_src1(src1);
+        }
+        if let Some(cmp_op) = opcode.cmp_op {
+            raw.als.set_cmp_op(cmp_op);
+        }
+        Ok(raw)
+    }
+    pub fn new(raw: &RawInstr, lts: &[Option<u32>; 4]) -> Result<Self, DecodeError> {
+        let (ver, desc) = Desc::new(raw)?.ok_or(DecodeError::NotFound {
+            source: NotFoundError {
+                op: raw.als.op(),
+                ext: raw.ales.op(),
+                src1: raw.als.raw_src1(),
+            },
+        })?;
+        if raw.version < ver {
+            return Err(DecodeError::NotAvailable {
+                source: NotAvailableError {
+                    version: raw.version,
+                    channel: raw.channel as usize,
+                    expected: ver,
+                    name: desc.as_str(),
+                },
+            });
+        }
+        let src1 = || Src1::from(raw.als.src1());
+        let src2 = || Src2::new(raw.als.src2(), lts);
+        let src3 =
+            || Reg::try_from(raw.ales.src3()).map_err(|e| DecodeError::InvalidSrc3 { source: e });
+        let src4 =
+            || Reg::try_from(raw.als.src4()).map_err(|e| DecodeError::InvalidSrc4 { source: e });
+        let addr = || Addr::new(raw, lts).map_err(|e| DecodeError::InvalidAddr { source: e });
+        let imm8 = || raw.ales.src3().0;
+        let mrgc = || MergeCond::try_from(raw);
+        let dst = || Dst::try_from(raw.als.dst());
+        let dst_preg = || raw.als.cmp_dst();
+        let addr_array = || AddrArray::new(raw, lts);
+        let instr = match desc {
+            Desc::Op2(op) => Self::Op2(op, src2()?, dst()?),
+            Desc::Op3(op) => Self::Op3(op, src1(), src2()?, dst()?),
+            Desc::Op4(op) => Self::Op4(op, src1(), src2()?, src3()?, dst()?),
+            Desc::Op2cmp(op) => Self::Op2cmp(op, src2()?, dst_preg()),
+            Desc::Op3cmp(op) => Self::Op3cmp(op, src1(), src2()?, dst_preg()),
+            Desc::Op3mrgc(op) => Self::Op3mrgc(op, src1(), src2()?, dst()?, mrgc()?),
+            Desc::Op4mrgc(op) => Self::Op4mrgc(op, src1(), src2()?, src3()?, dst()?, mrgc()?),
+            Desc::Op3imm8(op) => Self::Op3imm8(op, src2()?, imm8(), dst()?),
+            Desc::Op4imm8(op) => Self::Op4imm8(op, src1(), src2()?, imm8(), dst()?),
+            Desc::Op3load(op) => Self::Op3load(op, addr()?, dst()?),
+            Desc::Op3store(op) => Self::Op3store(op, src4()?, addr()?),
+            Desc::Op2rw(op) => {
+                let dst = StateReg::try_from(raw.als.raw_dst())
+                    .map_err(|_| DecodeError::InvalidDstState)?;
+                Self::Op2rw(op, src2()?, dst)
+            }
+            Desc::Op2rr(op) => {
+                let src = StateReg::try_from(raw.als.raw_src1())
+                    .map_err(|_| DecodeError::InvalidSrcState)?;
+                Self::Op2rr(op, src, dst()?)
+            }
+            Desc::OpAload(op) => Self::OpAload(op, addr_array()?, dst()?),
+            Desc::OpAstore(op) => Self::OpAstore(op, src4()?, addr_array()?),
+        };
+        Ok(instr)
+    }
+}
 
 decl! {
     Op2(src2: Src2, dst: Dst) {
@@ -931,11 +1308,11 @@ decl! {
         fcmpnledb(d, d) { 0x2f[C0,C1,C3,C4] if cmp_op == 6 }
         fcmpoddb(d, d) { 0x2f[C0,C1,C3,C4] if cmp_op == 7 }
     }
-    Op3mrgc(src1: Src1, src2: Src2, dst: Dst, cond: SrcCond) {
+    Op3mrgc(src1: Src1, src2: Src2, dst: Dst, cond: MergeCond) {
         merges(w, w, w) { 0x0e[C0,C1,C2,C3,C4,C5] } // mrgc
         merged(d, d, d) { 0x0f[C0,C1,C2,C3,C4,C5] } // mrgc
     }
-    Op4mrgc(src1: Src1, src2: Src2, src3: Src3, dst: Dst, cond: SrcCond) {
+    Op4mrgc(src1: Src1, src2: Src2, src3: Src3, dst: Dst, cond: MergeCond) {
         merge_ands(w, w, w, w) { 0x0e(Ex8)[C1,C4] } // mrgc
         merge_andd(d, d, d, d) { 0x0f(Ex8)[C1,C4] } // mrgc
         merge_andns(w, w, w, w) { 0x2e(Ex8)[C1,C4] } // mrgc
@@ -1061,15 +1438,15 @@ decl! {
         stgdq(q, w, w) { 0x39(Ex1)[C2,C5] } // pair
         stapq(q, q, w) { 0x3a(Ex1)[C2,C5] } // pair
     }
-    Op2rw(src2: Src2, dst: DstState) {
+    Op2rw(src2: Src2, dst: StateReg) {
         rws { 0x3c(Ex1)[C0] } // state
         rwd { 0x3d(Ex1)[C0] } // state
     }
-    Op2rr(src1: SrcState, dst: Dst) {
+    Op2rr(src1: StateReg, dst: Dst) {
         rrs { 0x3e(Ex1)[C0] } // state
         rrd { 0x3f(Ex1)[C0] } // state
     }
-    OpAlaod(addr: AddrArray, dst: Dst) {
+    OpAload(addr: AddrArray, dst: Dst) {
         ldaab(b) { 0x5c(Ex1)[C2,C5] }
         ldaah(h) { 0x5d(Ex1)[C2,C5] }
         ldaaw(w) { 0x5e(Ex1)[C2,C5] } // aaurrs, mas

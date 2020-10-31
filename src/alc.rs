@@ -1,237 +1,281 @@
 pub mod instr;
-pub mod state;
 
-use self::instr::operands::SrcCond;
-use self::instr::Instr;
-use crate::plu::state::Pred;
-use crate::raw::syllable::Rlp;
-use crate::raw::syllable::{Ales, Als};
-use crate::raw::Unpacked;
-use crate::{Error, InsertInto};
+use self::instr::operand::MergeCond;
+use self::instr::{Instr, RawInstr};
+use crate::raw;
+use crate::state::lit_loc::{LitPart, LitValue};
+use crate::state::pred::Pred;
 use core::convert::TryFrom;
 use core::fmt;
-use num_enum::FromPrimitive;
+use thiserror::Error;
 
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, FromPrimitive)]
-#[repr(u8)]
-pub enum Index {
-    C0,
-    C1,
-    C2,
-    C3,
-    C4,
-    #[num_enum(default)]
-    C5,
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum DecodeError {
+    #[error("Failed to decode instruction")]
+    InvalidInstr {
+        #[from]
+        source: self::instr::DecodeError,
+    },
 }
 
-#[derive(Copy, Clone)]
-pub struct Raw {
-    pub channel: Index,
-    pub version: u8,
-    pub als: Als,
-    pub ales: Ales,
-    pub cond: Option<SrcCond>,
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum EncodeError {
+    #[error("Failed to encode instruction")]
+    InvalidInstr {
+        #[from]
+        source: self::instr::EncodeError,
+    },
+    #[error("Failed to place LTS {0}")]
+    OccupiedLts(u8),
 }
 
-impl Raw {
-    fn src1(&self) -> u8 {
-        self.als.src1()
-    }
-    fn cmp_op(&self) -> u8 {
-        self.als.cmp_op()
-    }
+/// A predicate for execution of instructions.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ExecPred {
+    IfTrue(Pred),
+    IfFalse(Pred),
 }
 
-impl Default for Raw {
-    fn default() -> Self {
-        let mut als = Als::default();
-        als.set_src1(0xc0);
-        let mut ales = Ales::default();
-        ales.set_src3(0xc0);
-        Self {
-            channel: Index::C0,
-            version: 1,
-            als,
-            ales,
-            cond: None,
+impl ExecPred {
+    pub fn from_raw(index: usize, rlp: &raw::Rlp) -> Option<Self> {
+        if rlp.check_channel_rlp(index) {
+            let pred: Pred = rlp.psrc().into();
+            if rlp.invert_mask() & 1 << index % 3 == 0 {
+                Some(Self::IfTrue(pred))
+            } else {
+                Some(Self::IfFalse(pred))
+            }
+        } else {
+            None
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Cond {
-    pub invert: bool,
-    pub pred: Pred,
-}
-
-impl Cond {
-    pub fn into_raw(self, index: usize) -> Rlp {
-        let mut rlp = Rlp::default();
+    pub fn into_raw(self, index: usize) -> raw::Rlp {
+        let i = index % 3;
+        let mut rlp = raw::Rlp::default();
         rlp.set_cluster(index >= 3);
-        rlp.set_alc_mask(1 << index % 3);
-        rlp.set_psrc(self.pred.into_raw());
-        rlp.set_invert_mask((self.invert as u8) << index % 3);
+        rlp.set_alc_mask(1 << i);
+        let pred = match self {
+            Self::IfTrue(pred) => pred,
+            Self::IfFalse(pred) => {
+                rlp.set_invert_mask(1 << i);
+                pred
+            }
+        };
+        rlp.set_psrc(pred.into());
         rlp
     }
-}
-
-impl fmt::Display for Cond {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if self.invert {
-            write!(fmt, "~")?;
+    pub fn pred(&self) -> &Pred {
+        match self {
+            Self::IfTrue(pred) => pred,
+            Self::IfFalse(pred) => pred,
         }
-        write!(fmt, "{}", self.pred)
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Am {
-    pub pred: Pred,
+impl fmt::Display for ExecPred {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::IfTrue(pred) => write!(f, "{}", pred),
+            Self::IfFalse(pred) => write!(f, "~{}", pred),
+        }
+    }
 }
 
-impl Am {
-    pub fn into_raw(self, index: usize) -> Rlp {
-        let mut rlp = Rlp::default();
+/// A predicate for address modification in synchronous array access.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct AmPred(Pred);
+
+impl AmPred {
+    pub fn from_raw(index: usize, raw: &raw::Rlp) -> Option<Self> {
+        if raw.check_channel_am(index) {
+            Pred::try_from(raw.psrc()).ok().map(Self)
+        } else {
+            None
+        }
+    }
+    pub fn into_raw(self, index: usize) -> raw::Rlp {
+        let mut rlp = raw::Rlp::default();
         rlp.set_cluster(index >= 3);
         rlp.set_am(true);
-        rlp.set_psrc(self.pred.into_raw());
+        rlp.set_psrc(self.0.into());
         rlp
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Channel {
-    pub index: Index,
     pub sm: bool,
     pub instr: Instr,
-    pub cond: Option<Cond>,
-    pub am: Option<Am>,
+    pub exec_pred: Option<ExecPred>,
+    pub am: Option<AmPred>,
 }
 
 impl Channel {
-    fn from_raw(bundle: &Unpacked, i: usize) -> Self {
-        let als = bundle.als[i];
-        let ales =
-            if (i == 2 || i == 5) && bundle.hs.ales_mask() & 1 << i != 0 && bundle.ales[i].0 == 0 {
-                Ales(0x01c0)
-            } else {
-                bundle.ales[i]
-            };
-        let cond = bundle
-            .rlp_iter()
-            .find(|rlp| rlp.mrgc() && rlp.check_channel(i))
-            .map(|rlp| SrcCond {
-                invert: rlp.invert_mask() & 1 << i % 3 != 0,
-                pred: Pred::from_raw(rlp.psrc()),
-            });
-        let raw = Raw {
-            channel: Index::from_primitive(i as u8),
-            version: u8::MAX,
-            als,
-            ales,
-            cond,
+    pub fn from_raw(
+        bundle: &raw::Unpacked,
+        version: u8,
+        index: usize,
+    ) -> Result<Self, DecodeError> {
+        let als = bundle.als[index];
+        let ales = if (index == 2 || index == 5)
+            && bundle.hs.is_set_ales(index)
+            && bundle.ales[index].is_empty()
+        {
+            raw::Ales::DEFAULT_25_EXT
+        } else {
+            bundle.ales[index]
         };
-        let instr = Instr::try_from(&raw).unwrap();
-        let cond = bundle
+        let mc = bundle
             .rlp_iter()
-            .find(|rlp| !rlp.mrgc() && rlp.check_channel(i))
-            .map(|rlp| Cond {
-                invert: rlp.invert_mask() & 1 << i % 3 != 0,
-                pred: Pred::from_raw(rlp.psrc()),
-            });
-        let cond_am = bundle
+            .find(|rlp| rlp.check_channel_mrgc(index))
+            .map(|rlp| MergeCond::from_raw(index, rlp).unwrap());
+        let pred = bundle
             .rlp_iter()
-            .find(|rlp| !rlp.mrgc() && rlp.check_channel_am(i))
-            .map(|rlp| Am {
-                pred: Pred::from_raw(rlp.psrc()),
-            });
-        Channel {
-            index: Index::try_from(i as u8).unwrap(),
+            .find(|rlp| rlp.check_channel_rlp(index))
+            .map(|rlp| ExecPred::from_raw(index, rlp).unwrap());
+        let am = bundle
+            .rlp_iter()
+            .find(|rlp| rlp.check_channel_am(index))
+            .map(|rlp| AmPred::from_raw(index, rlp).unwrap());
+        let raw = RawInstr::new(version, index, als, ales, mc, None);
+        let instr = Instr::new(&raw, &bundle.lts)?;
+        Ok(Channel {
             sm: als.sm(),
             instr,
-            cond,
-            am: cond_am,
-        }
+            exec_pred: pred,
+            am: am,
+        })
     }
-    fn pack_into(&self, channel: usize, bundle: &mut Unpacked) {
-        let raw = self
-            .instr
-            .into_raw(u8::MAX, Index::from_primitive(channel as u8))
-            .unwrap();
+    pub fn pack_into(
+        &self,
+        version: u8,
+        channel: usize,
+        bundle: &mut raw::Unpacked,
+    ) -> Result<(), EncodeError> {
+        let raw = self.instr.into_raw(version, channel)?;
         bundle.hs.set_als_mask(bundle.hs.als_mask() | 1 << channel);
-        bundle.als[channel] = raw.als;
+        bundle.als[channel as usize] = raw.als;
         if raw.ales.op() != 0 {
             bundle
                 .hs
                 .set_ales_mask(bundle.hs.ales_mask() | 1 << channel);
-            bundle.ales[channel] = raw.ales;
+            bundle.ales[channel as usize] = raw.ales;
         }
-
-        if let Some(cond) = self.cond {
-            if let Some(rlp) = bundle.find_rlp_mut(channel, cond.pred.into_raw()) {
+        if let Some(lit) = raw.lit {
+            match lit {
+                LitValue::F16(l, p, v) => {
+                    let loc = l.get() as usize;
+                    if bundle.lts[loc].is_some() {
+                        return Err(EncodeError::OccupiedLts(l.get()));
+                    }
+                    match p {
+                        LitPart::Lo => {
+                            bundle.lts[loc] = bundle.lts[loc].map(|i| (i & 0xffff_0000) | v as u32)
+                        }
+                        LitPart::Hi => {
+                            bundle.lts[loc] =
+                                bundle.lts[loc].map(|i| (i & 0x0000_ffff) | (v as u32) << 16)
+                        }
+                    }
+                }
+                LitValue::F32(l, v) => {
+                    let loc = l.get() as usize;
+                    if bundle.lts[loc].is_some() {
+                        return Err(EncodeError::OccupiedLts(l.get()));
+                    }
+                    bundle.lts[loc] = Some(v);
+                }
+                LitValue::F64(l, v) => {
+                    let loc = l.get() as usize;
+                    if bundle.lts[loc].is_some() || bundle.lts[loc + 1].is_some() {
+                        return Err(EncodeError::OccupiedLts(l.get()));
+                    }
+                    bundle.lts[loc] = Some(v as u32);
+                    bundle.lts[loc + 1] = Some((v >> 32) as u32);
+                }
+            }
+        }
+        if let Some(exec_pred) = self.exec_pred {
+            if let Some(rlp) = bundle.find_rlp_mut(channel, (*exec_pred.pred()).into()) {
                 rlp.set_alc_mask(rlp.alc_mask() | 1 << channel % 3);
                 rlp.set_invert_mask(rlp.invert_mask() | 1 << channel % 3);
             } else {
-                bundle.push_rlp(cond.into_raw(channel));
+                bundle.push_rlp(exec_pred.into_raw(channel));
             }
         }
-        if let Some(am) = self.am {
-            if let Some(rlp) = bundle.find_rlp_mut(channel, am.pred.into_raw()) {
+        if let Some(am_pred) = self.am {
+            if let Some(rlp) = bundle.find_rlp_mut(channel, am_pred.0.into()) {
                 rlp.set_am(true);
             } else {
-                bundle.push_rlp(am.into_raw(channel))
+                bundle.push_rlp(am_pred.into_raw(channel))
             }
+        }
+        Ok(())
+    }
+    pub fn display<'a>(&'a self, index: u8) -> impl fmt::Display + 'a {
+        struct Display<'a> {
+            channel: &'a Channel,
+            index: u8,
+        }
+
+        impl fmt::Display for Display<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let instr_display = self.channel.instr.display(self.index, self.channel.sm);
+                write!(f, "{}", instr_display)?;
+                if let Some(cond) = self.channel.exec_pred {
+                    write!(f, " ? {}", cond)?;
+                }
+                writeln!(f)?;
+                if let Instr::OpAload(_, arr, _) | Instr::OpAstore(_, _, arr) = self.channel.instr {
+                    if let Some(incr) = arr.incr {
+                        write!(f, "incr,{} {}", self.index as u8, incr)?;
+                        self.channel
+                            .am
+                            .map(|am| write!(f, " ? {}", am.0))
+                            .transpose()?;
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        Display {
+            channel: self,
+            index,
         }
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct Alc {
     pub channels: [Option<Channel>; 6],
 }
 
-impl TryFrom<&'_ Unpacked> for Alc {
-    type Error = Error;
-    fn try_from(raw: &Unpacked) -> Result<Self, Self::Error> {
+impl Alc {
+    pub fn unpack_from(version: u8, raw: &raw::Unpacked) -> Result<Self, DecodeError> {
         let mut channels = [None; 6];
-        for i in 0..6 {
-            if raw.hs.als_mask() & 1 << i == 0 {
-                continue;
-            }
-            channels[i] = Some(Channel::from_raw(raw, i));
+        for i in (0..6).filter(|i| raw.hs.is_set_als(*i)) {
+            channels[i as usize] = Some(Channel::from_raw(raw, version, i)?);
         }
         Ok(Self { channels })
     }
-}
-
-impl InsertInto<Unpacked> for Alc {
-    fn insert_into(self, raw: &mut Unpacked) {
+    pub fn insert_into(self, version: u8, raw: &mut raw::Unpacked) -> Result<(), EncodeError> {
         for (i, channel) in self.channels.iter().enumerate() {
             if let Some(channel) = channel {
-                channel.pack_into(i, raw);
+                channel.pack_into(version, i, raw)?;
             }
         }
+        Ok(())
     }
 }
 
-impl Alc {
-    pub fn print(&self, lts: &[u32; 4], fmt: &mut fmt::Formatter) -> fmt::Result {
-        for i in self.channels.iter().filter_map(|i| *i) {
-            instr::print_instr(&i.instr, fmt, i.index as usize, i.sm, lts)?;
-            if let Some(cond) = i.cond {
-                write!(fmt, " ? {}", cond)?;
-            }
-            writeln!(fmt)?;
-            match i.instr {
-                Instr::OpAlaod(_, arr, _) | Instr::OpAstore(_, _, arr) => {
-                    if let Some(incr) = arr.incr {
-                        write!(fmt, "incr,{} {}", i.index as u8, incr)?;
-                        if let Some(cond) = i.am {
-                            write!(fmt, " ? {}", cond.pred)?;
-                        }
-                    }
-                }
-                _ => (),
+impl fmt::Display for Alc {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for (i, channel) in self.channels.iter().enumerate() {
+            if let Some(channel) = channel {
+                write!(fmt, "{}", channel.display(i as u8))?;
             }
         }
         Ok(())

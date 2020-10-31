@@ -1,74 +1,36 @@
 //! Low-level representations of bundles.
 
-pub mod syllable;
+pub mod operand;
+mod packed;
+mod syllable;
+pub mod types;
 
-use self::syllable::{Aas, AasDst, Ales, Als, Cds, Cs0, Cs1, Hs, Lts, Pls, Rlp, Ss};
-use crate::{error::Error, util};
+pub use self::packed::*;
+pub use self::syllable::*;
 
-/// A packed bundle.
-///
-/// The minimum and maximum length of a packed bundle is 8 and 64 bytes.
-#[repr(transparent)]
-pub struct Packed {
-    data: [u8],
+use crate::state::pred::Pred;
+use crate::util;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum DecodeError {
+    #[error("Failed to pre decode bundle")]
+    PreDecode {
+        #[from]
+        source: PreDecodeError,
+    },
+    #[error("Unexpected buffer end")]
+    UnexpectedSourceEnd,
 }
 
-impl Packed {
-    /// Tries to parse a packed bundle from the given bytes.
-    ///
-    /// Returns the packed bundle and the remaining bytes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use e2k_arch::raw::Packed;
-    /// let bytes = [0x01, 0x00, 0x00, 0x04, 0x02, 0x01, 0x00, 0x00];
-    /// let (packed, tail) = Packed::from_bytes(&bytes)?;
-    /// assert_eq!(packed.as_slice(), bytes);
-    /// assert_eq!(tail, &[]);
-    /// # Ok::<(), e2k_arch::Error>(())
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// `Error::NeedMoreBytes` will be returned if the `buf` does not have enough data.
-    pub fn from_bytes(buf: &[u8]) -> Result<(&Self, &[u8]), Error> {
-        if buf.is_empty() {
-            return Err(Error::NeedMoreBytes(8));
-        }
-        let len = Hs(buf[0] as u32).len();
-        if buf.len() < len {
-            return Err(Error::NeedMoreBytes(len - buf.len()));
-        }
-        let (data, tail) = buf.split_at(len);
-        // safe because Packed has repr(transparent)
-        let bundle = unsafe { Self::new_unchecked(data) };
-        Ok((bundle, tail))
-    }
-    /// Wraps the given `slice` as a `Packed` bundle.
-    ///
-    /// # Safety
-    ///
-    /// The `slice` must be a valid packed bundle.
-    pub unsafe fn new_unchecked(slice: &[u8]) -> &Self {
-        &*(slice as *const [u8] as *const Self)
-    }
-    /// Yields the underlying `[u8]` slice.
-    pub fn as_slice(&self) -> &[u8] {
-        &self.data
-    }
-    /// Returns the header syllable.
-    pub fn hs(&self) -> Hs {
-        Hs(util::u32_from_le_slice(&self.data[0..4]))
-    }
-    /// Returns the stubs syllable.
-    pub fn ss(&self) -> Option<Ss> {
-        if self.hs().ss() {
-            Some(Ss(util::u32_from_le_slice(&self.data[4..8])))
-        } else {
-            None
-        }
-    }
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum EncodeError {
+    #[error("Unexpected buffer end")]
+    UnexpectedBufferEnd,
+    #[error("Invalid bundle format, size exceeded 64 bytes")]
+    InvalidFormat,
 }
 
 /// An unpacked bundle.
@@ -91,8 +53,7 @@ pub struct Unpacked {
     /// The half-syllables for array access unit channels.
     pub aas: [Aas; 4],
     /// The syllables for literal values.
-    pub lts: [Lts; 4],
-    pub lts_count: usize,
+    pub lts: [Option<u32>; 4],
     /// The syllables for logical predicate processing.
     pub pls: [Pls; 3],
     /// The syllables for conditional execution.
@@ -111,7 +72,7 @@ impl Unpacked {
     /// # Examples
     ///
     /// ```
-    /// # use e2k_arch::raw::syllable::{Hs, Als};
+    /// # use e2k_arch::raw::types::{Hs, Als};
     /// # use e2k_arch::raw::Unpacked;
     /// let bytes = [0x01, 0x00, 0x00, 0x04, 0x02, 0x01, 0x00, 0x00];
     /// let mut als = Als::default();
@@ -123,14 +84,14 @@ impl Unpacked {
     /// assert!(packed.hs.als0());
     /// assert_eq!(packed.als[0].0, als.0);
     /// assert_eq!(tail, &[]);
-    /// # Ok::<(), e2k_arch::Error>(())
+    /// # Ok::<(), e2k_arch::raw::DecodeError>(())
     /// ```
-    pub fn from_bytes(buf: &[u8]) -> Result<(Self, &[u8]), Error> {
+    pub fn from_bytes(buf: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
         let (packed, tail) = Packed::from_bytes(buf)?;
         Ok((Self::unpack(packed)?, tail))
     }
     /// Tries to unpack the packed bundle.
-    pub fn unpack(packed: &Packed) -> Result<Self, Error> {
+    pub fn unpack(packed: &Packed) -> Result<Self, DecodeError> {
         let mut bundle = Unpacked::default();
         let tail = bundle.unpack_head(packed.as_slice())?;
         let tail = bundle.unpack_middle(tail)?;
@@ -138,11 +99,11 @@ impl Unpacked {
         Ok(bundle)
     }
     /// Tries to unpack `HS`, `SS`, `ALS0-5`, `CS0`, `ALES2/5` and `CS1`.
-    fn unpack_head<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], Error> {
+    fn unpack_head<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], DecodeError> {
         let mut offset = 0;
         let mut read_u32 = || {
             if buf.len() < offset + 4 {
-                return Err(Error::UnexpectedEnd);
+                return Err(DecodeError::UnexpectedSourceEnd);
             }
             let val = util::u32_from_le_slice(&buf[offset..]);
             offset += 4;
@@ -168,18 +129,18 @@ impl Unpacked {
         let offset = self.hs.offset();
         if self.hs.cs1() {
             if buf.len() < offset {
-                return Err(Error::UnexpectedEnd);
+                return Err(DecodeError::UnexpectedSourceEnd);
             }
             self.cs1 = Cs1(util::u32_from_le_slice(&buf[offset - 4..]));
         }
         Ok(&buf[offset..])
     }
     /// Tries to unpack `ALES0/1/3/4` and `AAS0-5`.
-    fn unpack_middle<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], Error> {
+    fn unpack_middle<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], DecodeError> {
         let mut offset = 0;
         let mut read_u16 = || {
             if buf.len() < offset + 2 {
-                return Err(Error::UnexpectedEnd);
+                return Err(DecodeError::UnexpectedSourceEnd);
             }
             let val = util::u16_from_le_slice(&buf[offset ^ 2..]);
             offset += 2;
@@ -208,11 +169,11 @@ impl Unpacked {
         Ok(&buf[(offset + 3) & !3..])
     }
     /// Tries to unpack `LTS0-3`, `PLS0-2` and `CDS0-2`.
-    fn unpack_tail<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], Error> {
+    fn unpack_tail<'a>(&mut self, buf: &'a [u8]) -> Result<&'a [u8], DecodeError> {
         let mut offset = buf.len();
         let mut read_u32 = || {
             if offset < 4 {
-                return Err(Error::UnexpectedEnd);
+                return Err(DecodeError::UnexpectedSourceEnd);
             }
             offset -= 4;
             Ok(util::u32_from_le_slice(&buf[offset..]))
@@ -225,10 +186,7 @@ impl Unpacked {
         }
         for i in 0..4 {
             match read_u32() {
-                Ok(lts) => {
-                    self.lts_count += 1;
-                    self.lts[i] = Lts(lts);
-                }
+                Ok(lts) => self.lts[i] = Some(lts),
                 Err(_) => break,
             }
         }
@@ -248,7 +206,7 @@ impl Unpacked {
     /// # Examples
     ///
     /// ```
-    /// # use e2k_arch::raw::syllable::{Hs, Ss};
+    /// # use e2k_arch::raw::types::{Hs, Ss};
     /// # use e2k_arch::raw::Unpacked;
     /// let mut ss = Ss::default();
     /// ss.set_ct_op(0x02);
@@ -263,9 +221,9 @@ impl Unpacked {
     /// let expected = [0x01, 0x10, 0x00, 0x00, 0x48, 0x0c, 0x00, 0xc0];
     /// assert_eq!(packed.as_slice(), &expected);
     /// # assert_eq!(tail, &[0u8; 56]);
-    /// # Ok::<(), e2k_arch::Error>(())
+    /// # Ok::<(), e2k_arch::raw::EncodeError>(())
     /// ```
-    pub fn pack<'a>(&self, buf: &'a mut [u8]) -> Result<(&'a Packed, &'a mut [u8]), Error> {
+    pub fn pack<'a>(&self, buf: &'a mut [u8]) -> Result<(&'a Packed, &'a mut [u8]), EncodeError> {
         let middle_offset = self.pack_head(buf)?;
         let tail_offset = self.pack_middle(middle_offset, buf)?;
         let len = self.pack_tail(tail_offset, buf)?;
@@ -278,7 +236,7 @@ impl Unpacked {
         Ok((packed, tail))
     }
     /// Tries to pack `HS`, `SS`, `ALS0-5`, `CS0`, `ALES2/5` and `CS1` to the `buf`.
-    fn pack_head(&self, buf: &mut [u8]) -> Result<usize, Error> {
+    fn pack_head(&self, buf: &mut [u8]) -> Result<usize, EncodeError> {
         let mut offset = 4;
         let mut write_u32 = |value: u32| {
             let end = offset + 4;
@@ -288,7 +246,7 @@ impl Unpacked {
                 offset = end;
                 Ok(())
             } else {
-                Err(Error::UnexpectedEnd)
+                Err(EncodeError::UnexpectedBufferEnd)
             }
         };
         if self.hs.ss() {
@@ -313,18 +271,18 @@ impl Unpacked {
         Ok(offset)
     }
     /// Tries to pack `ALES0/1/3/4` and `AAS0-5` to the `buf`.
-    fn pack_middle(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, Error> {
+    fn pack_middle(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, EncodeError> {
         let mut write_u16 = |value: u16| {
             let start = offset ^ 2;
             let end = start + 2;
             if 64 < end {
-                Err(Error::BadFormat)
+                Err(EncodeError::InvalidFormat)
             } else if end <= buf.len() {
                 buf[start..end].copy_from_slice(&value.to_le_bytes());
                 offset += 2;
                 Ok(())
             } else {
-                Err(Error::UnexpectedEnd)
+                Err(EncodeError::UnexpectedBufferEnd)
             }
         };
         for i in &[0, 1, 3, 4] {
@@ -350,14 +308,14 @@ impl Unpacked {
         Ok((offset + 3) & !3)
     }
     /// Tries to pack `LTS0-3`, `PLS0-2` and `CDS0-2` to the `buf`.
-    fn pack_tail(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, Error> {
-        let lts_count = self.lts_count;
+    fn pack_tail(&self, mut offset: usize, buf: &mut [u8]) -> Result<usize, EncodeError> {
+        let lts_count = self.lts_count();
         let count = lts_count + (self.hs.pls_len() + self.hs.cds_len()) as usize;
         if (offset + count * 4) % 8 != 0 {
             offset += 4;
         }
         if buf.len() < offset + count * 4 {
-            return Err(Error::BadFormat);
+            return Err(EncodeError::InvalidFormat);
         }
         let mut write_u32 = |value: u32| {
             let end = offset + 4;
@@ -365,7 +323,10 @@ impl Unpacked {
             offset = end;
         };
         for lts in self.lts.iter().take(lts_count as usize).rev() {
-            write_u32(lts.0);
+            match lts {
+                Some(lts) => write_u32(*lts),
+                None => write_u32(0),
+            }
         }
         for pls in self.pls.iter().take(self.hs.pls_len() as usize).rev() {
             write_u32(pls.0);
@@ -374,6 +335,14 @@ impl Unpacked {
             write_u32(cds.into_raw());
         }
         Ok(offset)
+    }
+    pub fn lts_count(&self) -> usize {
+        self.lts
+            .iter()
+            .enumerate()
+            .filter(|(_, lts)| lts.is_some())
+            .last()
+            .map_or(0, |(i, _)| i + 1)
     }
     pub fn push_rlp(&mut self, rlp: Rlp) {
         let count = self.rlp_iter().count();
@@ -395,13 +364,13 @@ impl Unpacked {
             .flat_map(|cds| cds.rlp.iter_mut())
             .take_while(|rlp| rlp.is_some())
     }
-    pub fn find_rlp(&self, channel: usize, pred: u8) -> Option<&Rlp> {
+    pub fn find_rlp(&self, channel: usize, pred: Pred) -> Option<&Rlp> {
         self.rlp_iter()
-            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred && rlp.cluster() == (channel >= 3))
+            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred.into() && rlp.cluster() == (channel >= 3))
     }
-    pub fn find_rlp_mut(&mut self, channel: usize, pred: u8) -> Option<&mut Rlp> {
+    pub fn find_rlp_mut(&mut self, channel: usize, pred: Pred) -> Option<&mut Rlp> {
         self.rlp_iter_mut()
-            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred && rlp.cluster() == (channel >= 3))
+            .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred.into() && rlp.cluster() == (channel >= 3))
     }
 }
 
