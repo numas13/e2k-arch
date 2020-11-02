@@ -1,6 +1,6 @@
 use super::RawInstr;
 use crate::raw::types::{Aad, Incr, Index, Sti};
-use crate::state::lit_loc::{LitLoc32, LitValue};
+use crate::state::lit::{LitLoc32, LitValue};
 use crate::InsertInto;
 use core::fmt;
 use thiserror::Error;

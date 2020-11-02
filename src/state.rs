@@ -1,4 +1,4 @@
-pub mod lit_loc;
+pub mod lit;
 pub mod pred;
 pub mod reg;
 pub mod state_reg;

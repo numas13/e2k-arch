@@ -2,7 +2,7 @@ pub use crate::raw::operand::Imm4;
 
 use super::RawInstr;
 use crate::raw::operand::Operand;
-use crate::state::lit_loc::{self, LitLoc, LitValue};
+use crate::state::lit::{self, LitLoc, LitValue};
 use crate::state::reg::{Reg, Size};
 use crate::InsertInto;
 use core::convert::TryFrom;
@@ -13,7 +13,7 @@ use thiserror::Error;
 #[error("Failed to decode src2")]
 pub struct DecodeError {
     #[from]
-    source: lit_loc::DecodeError,
+    source: lit::DecodeError,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]

@@ -3,7 +3,7 @@ pub mod operand;
 
 use self::operand::*;
 use crate::raw::types::Preg;
-use crate::state::lit_loc::LitValue;
+use crate::state::lit::LitValue;
 use crate::state::reg::Reg;
 use crate::state::reg::{Size, OP_SIZE_D, OP_SIZE_Q, OP_SIZE_U, OP_SIZE_X};
 use crate::state::state_reg::StateReg;

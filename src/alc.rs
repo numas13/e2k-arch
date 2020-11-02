@@ -3,7 +3,7 @@ pub mod instr;
 use self::instr::operand::MergeCond;
 use self::instr::{Instr, RawInstr};
 use crate::raw;
-use crate::state::lit_loc::{LitPart, LitValue};
+use crate::state::lit::{LitPart, LitValue};
 use crate::state::pred::Pred;
 use core::convert::TryFrom;
 use core::fmt;
