@@ -56,7 +56,7 @@ newtype! {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Cu {
     pub loop_mode: bool,
     pub nop: Nop,

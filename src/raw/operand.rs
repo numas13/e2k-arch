@@ -53,7 +53,7 @@ bitfield! {
     pub struct Operand(u8);
     pub u8, raw_based, set_raw_based: 6, 0;
     pub u8, raw_regular, set_raw_regular: 5, 0;
-    pub u8, raw_global, set_raw_global: 3, 0;
+    pub u8, raw_global, set_raw_global: 4, 0;
     pub u8, src1_raw_imm5, set_src1_raw_imm5: 4, 0;
     pub u8, src2_raw_imm4, set_src2_raw_imm4: 3, 0;
     pub u8, from into Lit, src2_raw_lit, set_src2_raw_lit: 3, 0;

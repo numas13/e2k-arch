@@ -117,7 +117,31 @@ pub enum LitValue {
 }
 
 impl LitValue {
-    pub fn new(loc: LitLoc, lts: &[Option<u32>; 4]) -> Result<Self, DecodeError> {
+    pub fn l16lo_truncate(loc: u8, value: u16) -> Self {
+        Self::F16(LitLoc16::new_truncate(loc), LitPart::Lo, value)
+    }
+    pub fn l16lo(loc: u8, value: u16) -> Option<Self> {
+        LitLoc16::new(loc).map(|loc| Self::F16(loc, LitPart::Lo, value))
+    }
+    pub fn l16hi_truncate(loc: u8, value: u16) -> Self {
+        Self::F16(LitLoc16::new_truncate(loc), LitPart::Hi, value)
+    }
+    pub fn l16hi(loc: u8, value: u16) -> Option<Self> {
+        LitLoc16::new(loc).map(|loc| Self::F16(loc, LitPart::Hi, value))
+    }
+    pub fn l32_truncate(loc: u8, value: u32) -> Self {
+        Self::F32(LitLoc32::new_truncate(loc), value)
+    }
+    pub fn l32(loc: u8, value: u32) -> Option<Self> {
+        LitLoc32::new(loc).map(|loc| Self::F32(loc, value))
+    }
+    pub fn l64_clamp(loc: u8, value: u64) -> Self {
+        Self::F64(LitLoc64::new_clamp(loc), value)
+    }
+    pub fn l64(loc: u8, value: u64) -> Option<Self> {
+        LitLoc64::new(loc).map(|loc| Self::F64(loc, value))
+    }
+    pub fn from_slice(loc: LitLoc, lts: &[Option<u32>; 4]) -> Result<Self, DecodeError> {
         let value = match loc {
             LitLoc::F16(loc, LitPart::Lo) => {
                 lts[loc.get() as usize].map(|i| Self::F16(loc, LitPart::Lo, i as u16))
@@ -136,10 +160,7 @@ impl LitValue {
         };
         value.ok_or(DecodeError::ValueNotFound(loc))
     }
-}
-
-impl Into<Lit> for LitValue {
-    fn into(self) -> Lit {
+    pub fn into_raw(self) -> Lit {
         let (ty, loc) = match self {
             Self::F16(loc, LitPart::Lo, _) => (0, loc.get()),
             Self::F16(loc, LitPart::Hi, _) => (1, loc.get()),

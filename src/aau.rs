@@ -104,7 +104,7 @@ impl Into<(raw::Aas, u8)> for Instr {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Aau {
     pub channels: [Option<Instr>; 4],
 }

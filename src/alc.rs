@@ -113,6 +113,22 @@ pub struct Channel {
 }
 
 impl Channel {
+    pub fn new(sm: bool, instr: Instr) -> Self {
+        Self {
+            sm,
+            instr,
+            exec_pred: None,
+            am: None,
+        }
+    }
+    pub fn with_pred(sm: bool, instr: Instr, pred: ExecPred) -> Self {
+        Self {
+            sm,
+            instr,
+            exec_pred: Some(pred),
+            am: None,
+        }
+    }
     pub fn from_raw(
         bundle: &raw::Unpacked,
         version: u8,

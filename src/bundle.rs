@@ -63,7 +63,7 @@ pub enum EncodeError {
     },
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct Bundle {
     pub cu: Cu,
     pub alc: Alc,

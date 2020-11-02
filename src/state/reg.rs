@@ -54,6 +54,24 @@ pub enum Reg {
 }
 
 impl Reg {
+    pub fn based(value: u8) -> Option<Self> {
+        Based::new(value).map(Self::Based)
+    }
+    pub fn based_truncate(value: u8) -> Self {
+        Self::Based(Based::new_truncate(value))
+    }
+    pub fn regular(value: u8) -> Option<Self> {
+        Regular::new(value).map(Self::Regular)
+    }
+    pub fn regular_truncate(value: u8) -> Self {
+        Self::Regular(Regular::new_truncate(value))
+    }
+    pub fn global(value: u8) -> Option<Self> {
+        Global::new(value).map(Self::Global)
+    }
+    pub fn global_truncate(value: u8) -> Self {
+        Self::Global(Global::new_truncate(value))
+    }
     pub fn display<'a>(&'a self, size: Size) -> impl fmt::Display + 'a {
         Display { reg: self, size }
     }

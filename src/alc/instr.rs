@@ -2,7 +2,6 @@ mod display;
 pub mod operand;
 
 use self::operand::*;
-use crate::raw::types::Preg;
 use crate::state::lit::LitValue;
 use crate::state::reg::Reg;
 use crate::state::reg::{Size, OP_SIZE_D, OP_SIZE_Q, OP_SIZE_U, OP_SIZE_X};
@@ -263,8 +262,13 @@ pub struct Opcode {
     pub cmp_op: Option<u8>,
 }
 
-macro_rules! opcode {
-    ($version:ident, $opcode:literal, $($field:ident = $value:expr),* $(,)?) => {
+macro_rules! decl {
+    (@func $kind:ident :: $instr:ident($($arg:ident: $ty:ty),+)) => {
+        pub fn $instr($($arg: impl Into<$ty>),+) -> Instr {
+            Instr::$kind($kind::$instr, $($arg.into()),+)
+        }
+    };
+    (@opcode $version:ident, $opcode:literal, $($field:ident = $value:expr),* $(,)?) => {
         Opcode {
             version: $version,
             op: $opcode,
@@ -272,10 +276,7 @@ macro_rules! opcode {
             .. Opcode::default()
         }
     };
-}
-
-macro_rules! decl {
-    ($( $kind:ident( $($arg:ident: $arg_ty:ty),+ ) {
+    ($( $kind:ident $args:tt {
         $( $instr:ident $( ( $($arg_size:ident),+ ) )? {
             $( $opcode:literal
                 $( ($ext:path) )?
@@ -305,7 +306,7 @@ macro_rules! decl {
                     $( $( $kind::$instr if true $(&& matches!(chan, $($channel)|+))? => {
                         let version = ver!($($version)?);
                         (
-                            opcode!(
+                            decl!(@opcode
                                 version,
                                 $opcode,
                                 $(ext = $ext,)?
@@ -337,10 +338,7 @@ macro_rules! decl {
             }
         } )+
 
-        // #[derive(Copy, Debug, Clone, PartialEq)]
-        // pub enum Instr {
-        //     $( $kind( $kind, $($arg_ty),+ ) ),+
-        // }
+        $( $( decl!(@func $kind::$instr $args); )+ )+
 
         impl Desc {
             pub fn new(raw: &RawInstr) -> Result<Option<(u8, Desc)>, DecodeError> {
@@ -405,19 +403,19 @@ impl Desc {
 pub enum Instr {
     Op2(Op2, Src2, Dst),
     Op3(Op3, Src1, Src2, Dst),
-    Op4(Op4, Src1, Src2, Reg, Dst),
-    Op2cmp(Op2cmp, Src2, Preg),
-    Op3cmp(Op3cmp, Src1, Src2, Preg),
+    Op4(Op4, Src1, Src2, Src3, Dst),
+    Op2cmp(Op2cmp, Src2, DstPreg),
+    Op3cmp(Op3cmp, Src1, Src2, DstPreg),
     Op3mrgc(Op3mrgc, Src1, Src2, Dst, MergeCond),
-    Op4mrgc(Op4mrgc, Src1, Src2, Reg, Dst, MergeCond),
-    Op3imm8(Op3imm8, Src2, u8, Dst),
-    Op4imm8(Op4imm8, Src1, Src2, u8, Dst),
+    Op4mrgc(Op4mrgc, Src1, Src2, Src3, Dst, MergeCond),
+    Op3imm8(Op3imm8, Src2, Imm8, Dst),
+    Op4imm8(Op4imm8, Src1, Src2, Imm8, Dst),
     Op3load(Op3load, Addr, Dst),
-    Op3store(Op3store, Reg, Addr),
-    Op2rw(Op2rw, Src2, StateReg),
-    Op2rr(Op2rr, StateReg, Dst),
+    Op3store(Op3store, Src4, Addr),
+    Op2rw(Op2rw, Src2, DstState),
+    Op2rr(Op2rr, SrcState, Dst),
     OpAload(OpAload, AddrArray, Dst),
-    OpAstore(OpAstore, Reg, AddrArray),
+    OpAstore(OpAstore, Src4, AddrArray),
 }
 
 impl Instr {

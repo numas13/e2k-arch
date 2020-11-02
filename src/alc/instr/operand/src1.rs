@@ -1,7 +1,5 @@
-pub use crate::raw::operand::Imm5;
-
 use crate::alc::instr::RawInstr;
-use crate::raw::operand::Operand;
+use crate::raw::operand::{Based, Global, Imm5, Operand, Regular};
 use crate::state::reg::{Reg, Size};
 use crate::InsertInto;
 use core::convert::TryFrom;
@@ -57,5 +55,35 @@ impl Into<Operand> for Src1 {
 impl InsertInto<RawInstr> for Src1 {
     fn insert_into(self, raw: &mut RawInstr) {
         raw.als.set_src1(self.into());
+    }
+}
+
+impl From<Imm5> for Src1 {
+    fn from(value: Imm5) -> Self {
+        Self::Imm(value)
+    }
+}
+
+impl From<Reg> for Src1 {
+    fn from(value: Reg) -> Self {
+        Self::Reg(value)
+    }
+}
+
+impl From<Based> for Src1 {
+    fn from(value: Based) -> Self {
+        Reg::Based(value).into()
+    }
+}
+
+impl From<Regular> for Src1 {
+    fn from(value: Regular) -> Self {
+        Reg::Regular(value).into()
+    }
+}
+
+impl From<Global> for Src1 {
+    fn from(value: Global) -> Self {
+        Reg::Global(value).into()
     }
 }

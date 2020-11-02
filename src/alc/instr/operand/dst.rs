@@ -1,5 +1,5 @@
 use super::RawInstr;
-use crate::raw::operand::Operand;
+use crate::raw::operand::{Based, Global, Operand, Regular};
 use crate::state::reg::{Reg, Size};
 use crate::state::Ctpr;
 use crate::InsertInto;
@@ -84,5 +84,29 @@ impl Into<Operand> for Dst {
 impl InsertInto<RawInstr> for Dst {
     fn insert_into(self, raw: &mut RawInstr) {
         raw.als.set_dst(self.into());
+    }
+}
+
+impl From<Reg> for Dst {
+    fn from(value: Reg) -> Self {
+        Self::Reg(value)
+    }
+}
+
+impl From<Based> for Dst {
+    fn from(value: Based) -> Self {
+        Reg::Based(value).into()
+    }
+}
+
+impl From<Regular> for Dst {
+    fn from(value: Regular) -> Self {
+        Reg::Regular(value).into()
+    }
+}
+
+impl From<Global> for Dst {
+    fn from(value: Global) -> Self {
+        Reg::Global(value).into()
     }
 }

@@ -1,7 +1,5 @@
-pub use crate::raw::operand::Imm4;
-
 use super::RawInstr;
-use crate::raw::operand::Operand;
+use crate::raw::operand::{Based, Global, Imm4, Operand, Regular};
 use crate::state::lit::{self, LitLoc, LitValue};
 use crate::state::reg::{Reg, Size};
 use crate::InsertInto;
@@ -47,7 +45,7 @@ impl Src2 {
             Ok(Self::Imm(imm))
         } else if let Some(lit) = raw.src2_lit() {
             let loc = LitLoc::try_from(lit)?;
-            let val = LitValue::new(loc, lts)?;
+            let val = LitValue::from_slice(loc, lts)?;
             Ok(Self::Lit(val))
         } else {
             Ok(Reg::try_from(raw).map(Self::Reg).unwrap())
@@ -61,7 +59,7 @@ impl Into<Operand> for Src2 {
         match self {
             Self::Reg(reg) => raw = reg.into(),
             Self::Imm(imm) => raw.set_src2_imm4(imm),
-            Self::Lit(lit) => raw.set_src2_lit(lit.into()),
+            Self::Lit(lit) => raw.set_src2_lit(lit.into_raw()),
         }
         raw
     }
@@ -73,5 +71,41 @@ impl InsertInto<RawInstr> for Src2 {
         if let Self::Lit(val) = self {
             raw.lit = Some(val);
         }
+    }
+}
+
+impl From<Imm4> for Src2 {
+    fn from(value: Imm4) -> Self {
+        Self::Imm(value)
+    }
+}
+
+impl From<Reg> for Src2 {
+    fn from(value: Reg) -> Self {
+        Self::Reg(value)
+    }
+}
+
+impl From<Based> for Src2 {
+    fn from(value: Based) -> Self {
+        Reg::Based(value).into()
+    }
+}
+
+impl From<Regular> for Src2 {
+    fn from(value: Regular) -> Self {
+        Reg::Regular(value).into()
+    }
+}
+
+impl From<Global> for Src2 {
+    fn from(value: Global) -> Self {
+        Reg::Global(value).into()
+    }
+}
+
+impl From<LitValue> for Src2 {
+    fn from(value: LitValue) -> Self {
+        Self::Lit(value)
     }
 }
