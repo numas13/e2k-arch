@@ -139,4 +139,29 @@ mod tests {
             assert_eq!(packed.as_slice(), data, "{}", path);
         }
     }
+
+    #[test]
+    fn simple_bundle_build() {
+        let expected = &[
+            0x12, 0x00, 0x40, 0x10, 0x87, 0xd8, 0x36, 0x08, 0x00, 0x00, 0xe1, 0x0c, 0xef, 0xbe,
+            0xad, 0xde,
+        ];
+
+        use crate::alc::instr::operand::{LitValue, Reg};
+        use crate::alc::{instr, Channel};
+
+        let mut bundle = Bundle::default();
+        let instr = instr::fmul_adds(
+            Reg::based_truncate(54),
+            LitValue::l32_truncate(0, 0xdeadbeef),
+            Reg::global_truncate(1),
+            Reg::regular_truncate(7),
+        );
+        bundle.alc.channels[2] = Some(Channel::new(true, instr));
+
+        let raw = bundle.into_raw(u8::MAX).unwrap();
+        let mut buffer = [0u8; 64];
+        let (packed, _) = raw.pack(&mut buffer).unwrap();
+        assert_eq!(packed.as_slice(), expected);
+    }
 }
