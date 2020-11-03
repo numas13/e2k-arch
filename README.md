@@ -2,6 +2,11 @@
 
 e2k-arch is a library for decoding and encoding an instruction for E2K architecture written in Rust.
 
+# Disclaimer
+
+I am not associated with MCST. I have no Elbrus CPU. The work was done with my assumptions based on analyzing
+cross compiler output.
+
 # Example
 
 ```rust
