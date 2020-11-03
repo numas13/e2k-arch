@@ -170,8 +170,9 @@ impl Channel {
         channel: usize,
         bundle: &mut raw::Unpacked,
     ) -> Result<(), EncodeError> {
-        let raw = self.instr.into_raw(version, channel)?;
+        let mut raw = self.instr.into_raw(version, channel)?;
         bundle.hs.set_als_mask(bundle.hs.als_mask() | 1 << channel);
+        raw.als.set_sm(self.sm);
         bundle.als[channel as usize] = raw.als;
         if raw.ales.op() != 0 {
             bundle

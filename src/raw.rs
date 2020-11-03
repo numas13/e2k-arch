@@ -72,14 +72,13 @@ impl Unpacked {
     /// # Examples
     ///
     /// ```
-    /// # use e2k_arch::raw::types::{Hs, Als};
-    /// # use e2k_arch::raw::Unpacked;
+    /// # use e2k_arch::raw::{Unpacked, Hs, Als};
     /// let bytes = [0x01, 0x00, 0x00, 0x04, 0x02, 0x01, 0x00, 0x00];
     /// let mut als = Als::default();
     /// als.set_op(0x00);
-    /// als.set_src1(0x00);
-    /// als.set_src2(0x01);
-    /// als.set_dst(0x02);
+    /// als.set_raw_src1(0x00);
+    /// als.set_raw_src2(0x01);
+    /// als.set_raw_dst(0x02);
     /// let (packed, tail) = Unpacked::from_bytes(&bytes)?;
     /// assert!(packed.hs.als0());
     /// assert_eq!(packed.als[0].0, als.0);
@@ -206,12 +205,13 @@ impl Unpacked {
     /// # Examples
     ///
     /// ```
-    /// # use e2k_arch::raw::types::{Hs, Ss};
-    /// # use e2k_arch::raw::Unpacked;
+    /// # use e2k_arch::raw::{Unpacked, Hs, Ss, Ct};
+    /// let mut ct = Ct::default();
+    /// ct.set_op(0x02);
+    /// ct.set_preg(0x08);
+    /// ct.set_ctpr(0x03);
     /// let mut ss = Ss::default();
-    /// ss.set_ct_op(0x02);
-    /// ss.set_ct_pred(0x08);
-    /// ss.set_ct_ctpr(0x03);
+    /// ss.set_ct(ct);
     /// ss.set_ipd(0x03);
     /// let mut bundle = Unpacked::default();
     /// bundle.hs.set_ss(true);

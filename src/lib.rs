@@ -18,7 +18,7 @@ mod util;
 
 pub use crate::aau::Aau;
 pub use crate::alc::Alc;
-pub use crate::bundle::Bundle;
+pub use crate::bundle::{Bundle, DecodeError, EncodeError};
 pub use crate::cu::Cu;
 pub use crate::plu::Plu;
 
