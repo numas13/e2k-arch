@@ -330,6 +330,13 @@ macro_rules! decl {
                     $( Self::$instr => stringify!($instr), )+
                 }
             }
+            pub fn from_str(s: &str) -> Option<Self> {
+                let ret = match s {
+                    $( stringify!($instr) => Self::$instr, )+
+                    _ => return None,
+                };
+                Some(ret)
+            }
             fn operand_sizes(&self) -> OperandSizes {
                 let value = match self {
                     $( Self::$instr => operand_sizes!( $( $($arg_size),+ )? ), )+
@@ -396,6 +403,20 @@ impl Desc {
             Desc::OpAload(op) => op.as_str(),
             Desc::OpAstore(op) => op.as_str(),
         }
+    }
+    pub fn from_str(s: &str) -> Option<Self> {
+        macro_rules! find_op {
+            ($($i:ident),+) => {
+                $( if let Some(op) = $i::from_str(s) {
+                    return Some(Self::$i(op));
+                } )+
+            };
+        }
+        find_op!(
+            Op2, Op3, Op4, Op2cmp, Op3cmp, Op3mrgc, Op4mrgc, Op3imm8, Op4imm8, Op3load, Op3store,
+            Op2rw, Op2rr, OpAload, OpAstore
+        );
+        None
     }
 }
 
