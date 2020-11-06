@@ -1,3 +1,5 @@
+//! Control transfer.
+
 pub use crate::raw::types::{ClpIdx, DtAl};
 
 use super::{Control0, Control1};
@@ -7,40 +9,77 @@ use crate::state::pred::Preg;
 use core::fmt;
 use thiserror::Error;
 
+/// Error type for control transfer decoding.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum DecodeError {
-    #[error("Invalid control transfer {0:#x}")]
-    InvalidOpcode(u8),
+    #[error("Invalid control transfer condition {0:#x}")]
+    InvalidType(u8),
     #[error("Invalid clp index in %MLOCK condition")]
     InvalidClpIndex,
 }
 
-/// `%MLOCK` condition if compare instruction result.
+/// When condition is `true`.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum When {
+    /// If source is `true`.
+    True,
+    /// If source is `false`.
+    False,
+}
+
+impl From<bool> for When {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Self::True,
+            false => Self::False,
+        }
+    }
+}
+
+impl Into<bool> for When {
+    fn into(self) -> bool {
+        match self {
+            Self::True => true,
+            Self::False => false,
+        }
+    }
+}
+
+impl fmt::Display for When {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::True => Ok(()),
+            Self::False => f.write_str("~"),
+        }
+    }
+}
+
+/// `%MLOCK` condition for results of compare instructions.
 ///
 /// All booleans are invert flags.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MlockCmp {
     /// Result of compare instruction on ALC0.
-    Cmp0(bool),
+    Cmp0(When),
     /// Result of compare instruction on ALC1.
-    Cmp1(bool),
+    Cmp1(When),
     /// Result of compare instruction on ALC3.
-    Cmp3(bool),
+    Cmp3(When),
     /// Result of compare instruction on ALC4.
-    Cmp4(bool),
+    Cmp4(When),
     /// Result of compare instructions on ALC0 and ALC1.
-    Cmp0or1(bool, bool),
+    Cmp0or1(When, When),
     /// Result of compare instructions on ALC3 and ALC4.
-    Cmp3or4(bool, bool),
+    Cmp3or4(When, When),
 }
 
 /// Special condition for `%MLOCK`.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MlockCond {
     /// Result of CLP/MLP instruction.
-    Clp(ClpIdx, bool),
-    /// Result of compare instructions on AL channels.
+    Clp(ClpIdx, When),
+    /// Results of compare instructions on AL channels.
     Cmp(MlockCmp),
     /// TODO
     DtAl(DtAl),
@@ -48,7 +87,7 @@ pub enum MlockCond {
 
 /// Control transfer type.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum CtOp {
+pub enum CtCond {
     /// Jump always.
     Explicit,
     /// Jump if predicate register is `true`.
@@ -71,7 +110,7 @@ pub enum CtOp {
     PregAndNotLoopEnd(Preg),
 }
 
-impl CtOp {
+impl CtCond {
     /// Tries to decode a control transfer type from raw value.
     pub fn try_from(raw: raw::Ct) -> Result<Option<Self>, DecodeError> {
         let preg = Preg::new_truncate(raw.preg());
@@ -88,21 +127,21 @@ impl CtOp {
             raw::Ct::OP_MLOCK_OR_CMP_CLP => {
                 let cond = if raw.is_clp() {
                     let idx = raw.clp_idx().ok_or(DecodeError::InvalidClpIndex)?;
-                    MlockCond::Clp(idx, raw.inv())
+                    MlockCond::Clp(idx, When::from(!raw.inv()))
                 } else if raw.is_cmp_pair() {
                     let cmp = if raw.is_cmp3_4_pair() {
-                        MlockCmp::Cmp3or4(raw.inv0_3(), raw.inv1_4())
+                        MlockCmp::Cmp3or4(When::from(!raw.inv0_3()), When::from(!raw.inv1_4()))
                     } else {
-                        MlockCmp::Cmp0or1(raw.inv0_3(), raw.inv1_4())
+                        MlockCmp::Cmp0or1(When::from(!raw.inv0_3()), When::from(!raw.inv1_4()))
                     };
                     MlockCond::Cmp(cmp)
                 } else {
-                    let inv = raw.inv();
+                    let when = When::from(!raw.inv());
                     let cmp = match raw.cmp_idx() {
-                        0 => MlockCmp::Cmp0(inv),
-                        1 => MlockCmp::Cmp1(inv),
-                        2 => MlockCmp::Cmp3(inv),
-                        3 => MlockCmp::Cmp4(inv),
+                        0 => MlockCmp::Cmp0(when),
+                        1 => MlockCmp::Cmp1(when),
+                        2 => MlockCmp::Cmp3(when),
+                        3 => MlockCmp::Cmp4(when),
                         _ => unreachable!(),
                     };
                     MlockCond::Cmp(cmp)
@@ -111,12 +150,12 @@ impl CtOp {
             }
             raw::Ct::OP_NOT_PREG_OR_LOOP_END => Self::NotPregOrLoopEnd(preg),
             raw::Ct::OP_PREG_AND_NOT_LOOP_END => Self::PregAndNotLoopEnd(preg),
-            _ => return Err(DecodeError::InvalidOpcode(raw.op())),
+            _ => return Err(DecodeError::InvalidType(raw.op())),
         }))
     }
 }
 
-impl Into<raw::Ct> for CtOp {
+impl Into<raw::Ct> for CtCond {
     fn into(self) -> raw::Ct {
         let mut ct = raw::Ct::default();
         match self {
@@ -144,40 +183,40 @@ impl Into<raw::Ct> for CtOp {
                     ct.set_op(raw::Ct::OP_MLOCK);
                     ct.set_dt_al(dt_al);
                 }
-                MlockCond::Clp(idx, inv) => {
+                MlockCond::Clp(idx, f) => {
                     ct.set_op(raw::Ct::OP_MLOCK_OR_CMP_CLP);
                     ct.set_clp_idx(idx);
-                    ct.set_inv(inv);
+                    ct.set_inv(f.into());
                 }
                 MlockCond::Cmp(cmp) => {
                     ct.set_op(raw::Ct::OP_MLOCK_OR_CMP_CLP);
                     match cmp {
-                        MlockCmp::Cmp0(inv) => {
+                        MlockCmp::Cmp0(when) => {
                             ct.set_cmp_idx(0);
-                            ct.set_inv(inv);
+                            ct.set_inv(when.into());
                         }
-                        MlockCmp::Cmp1(inv) => {
+                        MlockCmp::Cmp1(when) => {
                             ct.set_cmp_idx(1);
-                            ct.set_inv(inv);
+                            ct.set_inv(when.into());
                         }
-                        MlockCmp::Cmp3(inv) => {
+                        MlockCmp::Cmp3(when) => {
                             ct.set_cmp_idx(2);
-                            ct.set_inv(inv);
+                            ct.set_inv(when.into());
                         }
-                        MlockCmp::Cmp4(inv) => {
+                        MlockCmp::Cmp4(when) => {
                             ct.set_cmp_idx(3);
-                            ct.set_inv(inv);
+                            ct.set_inv(when.into());
                         }
-                        MlockCmp::Cmp0or1(inv0, inv1) => {
+                        MlockCmp::Cmp0or1(when0, when1) => {
                             ct.set_cmp_pair(true);
-                            ct.set_inv0_3(inv0);
-                            ct.set_inv1_4(inv1);
+                            ct.set_inv0_3(when0.into());
+                            ct.set_inv1_4(when1.into());
                         }
-                        MlockCmp::Cmp3or4(inv3, inv4) => {
+                        MlockCmp::Cmp3or4(when3, when4) => {
                             ct.set_cmp_pair(true);
                             ct.set_cmp3_4_pair(true);
-                            ct.set_inv0_3(inv3);
-                            ct.set_inv1_4(inv4);
+                            ct.set_inv0_3(when3.into());
+                            ct.set_inv1_4(when4.into());
                         }
                     }
                 }
@@ -195,16 +234,8 @@ impl Into<raw::Ct> for CtOp {
     }
 }
 
-impl fmt::Display for CtOp {
+impl fmt::Display for CtCond {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fn inv_s(inv: bool) -> &'static str {
-            if inv {
-                "~"
-            } else {
-                ""
-            }
-        }
-
         match self {
             Self::Explicit => Ok(()),
             Self::Preg(preg) => write!(f, " ? {}", preg),
@@ -226,21 +257,21 @@ impl fmt::Display for CtOp {
                             }
                         }
                     }
-                    MlockCond::Clp(idx, inv) => {
-                        write!(f, " || {}%clp{}", inv_s(*inv), idx)?;
+                    MlockCond::Clp(idx, when) => {
+                        write!(f, " || {}%clp{}", when, idx)?;
                     }
                     MlockCond::Cmp(cmp) => {
                         f.write_str(" || ")?;
                         match cmp {
-                            MlockCmp::Cmp0(inv) => write!(f, "{}%cmp0", inv_s(*inv))?,
-                            MlockCmp::Cmp1(inv) => write!(f, "{}%cmp1", inv_s(*inv))?,
-                            MlockCmp::Cmp3(inv) => write!(f, "{}%cmp3", inv_s(*inv))?,
-                            MlockCmp::Cmp4(inv) => write!(f, "{}%cmp4", inv_s(*inv))?,
-                            MlockCmp::Cmp0or1(inv0, inv1) => {
-                                write!(f, "{}%cmp0 || {}%cmp1", inv_s(*inv0), inv_s(*inv1))?
+                            MlockCmp::Cmp0(when) => write!(f, "{}%cmp0", when)?,
+                            MlockCmp::Cmp1(when) => write!(f, "{}%cmp1", when)?,
+                            MlockCmp::Cmp3(when) => write!(f, "{}%cmp3", when)?,
+                            MlockCmp::Cmp4(when) => write!(f, "{}%cmp4", when)?,
+                            MlockCmp::Cmp0or1(when0, when1) => {
+                                write!(f, "{}%cmp0 || {}%cmp1", when0, when1)?
                             }
-                            MlockCmp::Cmp3or4(inv3, inv4) => {
-                                write!(f, "{}%cmp3 || {}%cmp4", inv_s(*inv3), inv_s(*inv4))?
+                            MlockCmp::Cmp3or4(when3, when4) => {
+                                write!(f, "{}%cmp3 || {}%cmp4", when3, when4)?
                             }
                         }
                     }
@@ -253,34 +284,70 @@ impl fmt::Display for CtOp {
     }
 }
 
+/// A control transfer instruction.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Ct {
-    pub ctpr: Option<Ctpr>,
-    pub op: CtOp,
+    ctpr: Option<Ctpr>,
+    cond: CtCond,
 }
+
 impl Ct {
-    pub const fn new(ctpr: Ctpr, op: CtOp) -> Self {
+    /// Create a control transfer instruction.
+    pub const fn new(ctpr: Ctpr, cond: CtCond) -> Self {
         Self {
             ctpr: Some(ctpr),
-            op,
+            cond,
         }
     }
-    pub fn print(
-        &self,
-        fmt: &mut fmt::Formatter,
-        c0: Option<&Control0>,
-        c1: Option<&Control1>,
-    ) -> fmt::Result {
-        match (c0, c1) {
-            (Some(Control0::IBranch(_)), _) => Ok(()),
-            (_, Some(Control1::Call { .. })) => Ok(()),
-            _ => writeln!(fmt, "{}", self),
-        }
+    /// Create control transfer instruction without specifying `ctpr`.
+    ///
+    /// # Notice
+    ///
+    /// Used for special purpose.
+    pub const fn with_cond(cond: CtCond) -> Self {
+        Self { ctpr: None, cond }
     }
+    /// Returns the control transfer pipeline register.
+    pub const fn ctpr(&self) -> Option<Ctpr> {
+        self.ctpr
+    }
+    /// Returns the control transfer condition.
+    pub const fn cond(&self) -> CtCond {
+        self.cond
+    }
+    /// Returns an object that implements `Display` for printing `Ct`.
+    pub fn display<'a>(
+        &'a self,
+        c0: Option<&'a Control0>,
+        c1: Option<&'a Control1>,
+    ) -> impl fmt::Display + 'a {
+        struct Display<'a> {
+            ct: &'a Ct,
+            c0: Option<&'a Control0>,
+            c1: Option<&'a Control1>,
+        }
+
+        impl fmt::Display for Display<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                match (self.c0, self.c1) {
+                    (Some(Control0::IBranch(_)), _) | (_, Some(Control1::Call { .. })) => Ok(()),
+                    _ => {
+                        if let Some(ctpr) = self.ct.ctpr {
+                            write!(f, "ct {}{}", ctpr, self.ct.cond)?;
+                        }
+                        Ok(())
+                    }
+                }
+            }
+        }
+
+        Display { ct: self, c0, c1 }
+    }
+    /// Tries to create a `Ct` from raw value.
     pub fn from_raw(raw: raw::Ct) -> Result<Option<Ct>, DecodeError> {
-        if let Some(op) = CtOp::try_from(raw)? {
+        if let Some(op) = CtCond::try_from(raw)? {
             let ctpr = Ctpr::new(raw.ctpr());
-            Ok(Some(Self { ctpr, op }))
+            Ok(Some(Self { ctpr, cond: op }))
         } else {
             Ok(None)
         }
@@ -289,19 +356,10 @@ impl Ct {
 
 impl Into<raw::Ct> for Ct {
     fn into(self) -> raw::Ct {
-        let mut raw: raw::Ct = self.op.into();
+        let mut raw: raw::Ct = self.cond.into();
         if let Some(ctpr) = self.ctpr {
             raw.set_ctpr(ctpr.get());
         }
         raw
-    }
-}
-
-impl fmt::Display for Ct {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(ctpr) = self.ctpr {
-            write!(fmt, "ct {}{}", ctpr, self.op)?;
-        }
-        Ok(())
     }
 }

@@ -68,7 +68,7 @@ impl Control0 {
                     Control0::IBranch(disp) => {
                         write!(f, "ibranch {}", disp)?;
                         if let Some(ct) = self.ct {
-                            write!(f, "{}", ct.op)?;
+                            write!(f, "{}", ct.cond())?;
                         }
                         writeln!(f)
                     }
@@ -81,7 +81,9 @@ impl Control0 {
                             write!(
                                 f,
                                 "done trar = {}, fdam = {}{}",
-                                *trar as u8, *fdam as u8, ct.op
+                                *trar as u8,
+                                *fdam as u8,
+                                ct.cond()
                             )
                         } else {
                             unreachable!()

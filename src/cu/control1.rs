@@ -294,11 +294,11 @@ impl Control1 {
                     Control1::Setsft => writeln!(f, "setsft"),
                     Control1::Call { wbs } => {
                         if let Some(ct) = self.ct {
-                            match ct.ctpr {
+                            match ct.ctpr() {
                                 Some(ctpr) => {
-                                    write!(f, "call {}, wbs = {:#x}{}", ctpr, wbs, ct.op)?
+                                    write!(f, "call {}, wbs = {:#x}{}", ctpr, wbs, ct.cond())?
                                 }
-                                None => write!(f, "call BAD_CTPR, wbs = {:#x}{}", wbs, ct.op)?,
+                                None => write!(f, "call BAD_CTPR, wbs = {:#x}{}", wbs, ct.cond())?,
                             }
                         }
                         Ok(())

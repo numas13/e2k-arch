@@ -122,21 +122,25 @@ impl Cu {
         struct Display<'a>(&'a Cu);
 
         impl fmt::Display for Display<'_> {
-            fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 let cu = self.0;
                 if cu.loop_mode {
-                    writeln!(fmt, "loop_mode")?;
+                    writeln!(f, "loop_mode")?;
                 }
                 if cu.nop.get() != 0 {
-                    writeln!(fmt, "{}", cu.nop)?;
+                    writeln!(f, "{}", cu.nop)?;
                 }
                 if let Some(ct) = cu.ct {
-                    ct.print(fmt, cu.control0.as_ref(), cu.control1.as_ref())?;
+                    writeln!(
+                        f,
+                        "{}",
+                        ct.display(cu.control0.as_ref(), cu.control1.as_ref())
+                    )?;
                 }
                 if cu.ipd.get() != 0 {
-                    writeln!(fmt, "{}", cu.ipd)?;
+                    writeln!(f, "{}", cu.ipd)?;
                 }
-                fmt::Display::fmt(&cu.stubs, fmt)
+                fmt::Display::fmt(&cu.stubs, f)
             }
         }
 
