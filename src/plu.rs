@@ -44,7 +44,7 @@ pub struct Plu {
 impl Plu {
     pub fn from_slice(pls: &[raw::Pls]) -> Result<Self, DecodeError> {
         let mut ret = Self::default();
-        let mut uses = [true; 7];
+        let mut uses = [false; 7];
         for (i, pls) in pls.iter().enumerate().rev().take(3) {
             let clp = Clp::try_from(pls.clp())?;
             if clp.dst.is_some() || uses[i + 4] {
