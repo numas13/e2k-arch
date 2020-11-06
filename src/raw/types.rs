@@ -1,4 +1,5 @@
 use bitfield::bitfield;
+use bitflags::bitflags;
 use core::fmt;
 use core::num::NonZeroU8;
 
@@ -170,5 +171,22 @@ newtype! {
     pub struct Incr(u8) {
         const MASK = 0x07;
         const FMT = "%aaincr{}";
+    }
+}
+
+bitflags! {
+    pub struct DtAl: u8 {
+        const DT_AL0 = 1 << 0;
+        const DT_AL1 = 1 << 1;
+        const DT_AL3 = 1 << 2;
+        const DT_AL4 = 1 << 3;
+    }
+}
+
+newtype! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
+    pub struct ClpIdx(u8) {
+        const RANGE = 0..=2;
+        const FMT = "{}";
     }
 }

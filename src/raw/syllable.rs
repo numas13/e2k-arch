@@ -203,6 +203,22 @@ bitfield_from_into!(Ct, u16);
 bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     pub struct Ct(u16);
+    /// Invert for `%cmpN` or `%clpZ`.
+    pub inv, set_inv: 0;
+    /// Index for `%cmpN` where `N` is one of `0, 1, 3, 4`.
+    pub u8, cmp_idx, set_cmp_idx: 3, 1;
+    /// Invert `%cmp1` or `%cmp4` in pair.
+    pub inv1_4, set_inv1_4: 0;
+    /// Invert `%cmp0` or `%cmp3` in pair.
+    pub inv0_3, set_inv0_3: 1;
+    /// If `1` than `%cmp3 || %cmp4` otherwise `%cmp0 || %cmp1`.
+    pub is_cmp3_4_pair, set_cmp3_4_pair: 2;
+    /// Flag for `%cmpN || %cmpN+1`.
+    pub is_cmp_pair, set_cmp_pair: 3;
+    /// Index for `%clpZ`.
+    pub u8, raw_clp_idx, set_raw_clp_idx: 3, 1;
+    /// If `1` than `%clpN` otherwise `%cmpN` or `%cmpN || %cmpN+1`.
+    pub is_clp, set_clp: 4;
     /// A predicate register for a conditional control transfer.
     pub u8, preg, set_preg: 4, 0;
     /// A control transfer opcode.
@@ -222,9 +238,21 @@ impl Ct {
     pub const OP_PREG_OR_LOOP_END: u8 = 0x6;
     pub const OP_NOT_PREG_AND_NOT_LOOP_END: u8 = 0x7;
     pub const OP_MLOCK: u8 = 0x8;
-    pub const OP_MLOCK_OR_CMP0: u8 = 0x9;
+    pub const OP_MLOCK_OR_CMP_CLP: u8 = 0x9;
     pub const OP_NOT_PREG_OR_LOOP_END: u8 = 0xe;
     pub const OP_PREG_AND_NOT_LOOP_END: u8 = 0xf;
+    pub fn dt_al(&self) -> DtAl {
+        DtAl::from_bits_truncate(self.preg())
+    }
+    pub fn set_dt_al(&mut self, dt_al: DtAl) {
+        self.set_preg(dt_al.bits())
+    }
+    pub fn clp_idx(&self) -> Option<ClpIdx> {
+        ClpIdx::new(self.raw_clp_idx())
+    }
+    pub fn set_clp_idx(&mut self, idx: ClpIdx) {
+        self.set_raw_clp_idx(idx.get())
+    }
 }
 
 bitfield! {
