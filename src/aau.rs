@@ -35,6 +35,7 @@ pub enum Op {
     Movaw = raw::Aas::OP_MOVAW,
     Movad = raw::Aas::OP_MOVAD,
     Movaq = raw::Aas::OP_MOVAQ,
+    Movaqp = raw::Aas::OP_MOVAQP,
 }
 
 impl Op {
@@ -45,6 +46,7 @@ impl Op {
             Self::Movaw => "movaw",
             Self::Movad => "movad",
             Self::Movaq => "movaq",
+            Self::Movaqp => "movaqp",
         }
     }
     pub const fn dst_size(&self) -> Size {
@@ -54,6 +56,7 @@ impl Op {
             Self::Movaw => Size::W,
             Self::Movad => Size::D,
             Self::Movaq => Size::Q,
+            Self::Movaqp => Size::Q,
         }
     }
 }

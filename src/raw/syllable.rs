@@ -494,6 +494,7 @@ impl Aas {
     pub const OP_MOVAW: u8 = 3;
     pub const OP_MOVAD: u8 = 4;
     pub const OP_MOVAQ: u8 = 5;
+    pub const OP_MOVAQP: u8 = 7;
 }
 
 bitfield! {
