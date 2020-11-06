@@ -1,4 +1,5 @@
-use crate::raw::operand::{Based, Global, Operand, Regular};
+use crate::raw::operand::Operand;
+pub use crate::raw::operand::{Based, Global, Regular};
 use core::convert::TryFrom;
 use core::fmt::{self, Write};
 use thiserror::Error;
