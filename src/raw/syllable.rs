@@ -164,7 +164,8 @@ bitfield! {
     pub abpt, set_abpt: 18;
     /// Increment a base for rotated predicate registers if branch was not taken.
     pub abpf, set_abpf: 19;
-    // TODO: SS[20]
+    /// SS type.
+    pub ty, set_ty: 20;
     /// Increment a base for rotated registers if branch was taken.
     pub abnt, set_abnt: 21;
     /// Increment a base for rotated registers if branch was not taken.
@@ -173,15 +174,17 @@ bitfield! {
     pub abgd, set_abgd: 23;
     /// Increment a base for rotated global registers.
     pub abgi, set_abgi: 24;
-    // TODO: SS[25]
+    rp_lo, set_rp_lo: 25;
     // TODO: doc SS[vfdi]
     pub vfdi, set_vfdi: 26;
-    // TODO: doc SS[srp]
-    pub srp, set_srp: 27;
+    pub u8, ty1_op2, set_ty1_op2: 26, 26;
+    pub ty1_inv, set_ty1_inv: 26;
+    rp_hi, set_rp_hi: 27;
     /// Begin an arrays async prefetch.
     pub bap, set_bap: 28;
     /// End an arrays async prefetch.
     pub eap, set_eap: 29;
+    pub u8, ty1_op1, set_ty1_op1: 29, 28;
     /// TODO: doc Instruction prefetch depth.
     pub u8, ipd, set_ipd: 31, 30;
 }
@@ -196,6 +199,33 @@ impl Ss {
     }
     pub fn set_aas(&mut self, index: u8) {
         self.set_aas_mask(self.aas_mask() | 1 << index);
+    }
+    pub fn rp(&self) -> u8 {
+        (self.rp_hi() as u8) << 1 | (self.rp_lo() as u8)
+    }
+    pub fn set_rp(&mut self, op: u8) {
+        self.set_rp_hi(op >> 1 != 0);
+        self.set_rp_lo(op & 1 != 0);
+    }
+    pub fn is_flushts(&self) -> bool {
+        self.ty1_op1() == 1 && self.ty1_op2() == 1
+    }
+    pub fn set_flushts(&mut self) {
+        self.set_ty1_op1(1);
+        self.set_ty1_op2(1);
+    }
+    pub fn is_invts(&self) -> bool {
+        self.ty1_op1() == 1 && self.ty1_op2() == 0
+    }
+    pub fn set_invts(&mut self) {
+        self.set_ty1_op1(1);
+        self.set_ty1_op2(0);
+    }
+    pub fn is_invts_pred(&self) -> bool {
+        self.ty1_op1() == 3
+    }
+    pub fn set_invts_pred(&mut self) {
+        self.set_ty1_op1(3);
     }
 }
 
@@ -642,6 +672,7 @@ bitfield! {
     #[derive(Copy, Clone, Default, Eq, PartialEq)]
     #[repr(transparent)]
     pub struct Rlp(u16);
+    pub u8, preg, set_preg: 4, 0;
     pub u8, from into Pred, psrc, set_psrc: 6, 0;
     pub u8, invert_mask, set_invert_mask: 9, 7;
     pub invert0, set_invert0: 7;
@@ -657,6 +688,14 @@ bitfield! {
 }
 
 impl Rlp {
+    pub fn is_rpc(&self) -> bool {
+        self.mrgc() && !self.cluster() && self.am()
+    }
+    pub fn set_rpc(&mut self) {
+        self.set_mrgc(true);
+        self.set_cluster(false);
+        self.set_am(true);
+    }
     pub fn is_some(&self) -> bool {
         self.0 != 0
     }

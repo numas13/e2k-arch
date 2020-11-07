@@ -372,6 +372,9 @@ impl Unpacked {
         self.rlp_iter_mut()
             .find(|rlp| !rlp.mrgc() && rlp.psrc() == pred.into() && rlp.cluster() == (channel >= 3))
     }
+    pub fn find_rpc(&self) -> Option<&Rlp> {
+        self.rlp_iter().find(|rlp| rlp.is_rpc())
+    }
 }
 
 #[cfg(test)]
