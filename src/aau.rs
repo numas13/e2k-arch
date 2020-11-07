@@ -51,12 +51,8 @@ impl Op {
     }
     pub const fn dst_size(&self) -> Size {
         match self {
-            Self::Movab => Size::B,
-            Self::Movah => Size::H,
-            Self::Movaw => Size::W,
-            Self::Movad => Size::D,
-            Self::Movaq => Size::Q,
-            Self::Movaqp => Size::Q,
+            Self::Movab | Self::Movah | Self::Movaw | Self::Movad => Size::D,
+            Self::Movaq | Self::Movaqp => Size::Q,
         }
     }
 }
