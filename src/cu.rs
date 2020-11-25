@@ -11,7 +11,6 @@ pub use self::stubs::Stubs;
 use crate::raw::{Rlp, Unpacked};
 use crate::state::cond::PregCond;
 use crate::state::pred::Preg;
-use core::convert::TryFrom;
 use core::fmt;
 use num_enum::TryFromPrimitive;
 use thiserror::Error;
@@ -161,7 +160,7 @@ impl Cu {
     pub fn unpack_from(raw: &Unpacked) -> Result<Self, DecodeError> {
         let ct = Ct::from_raw(raw.ss.ct()).map_err(|e| DecodeError::CtDecodeError { source: e })?;
         let control0 = if raw.hs.cs0() {
-            Some(Control0::try_from(raw.cs0)?)
+            Some(Control0::unpack_from(raw)?)
         } else {
             None
         };
@@ -198,7 +197,7 @@ impl Cu {
         }
         if let Some(control0) = self.control0 {
             raw.hs.set_cs0(true);
-            raw.cs0 = control0.into();
+            control0.pack_into(raw);
         }
         if let Some(control1) = self.control1 {
             raw.hs.set_cs1(true);
@@ -227,11 +226,7 @@ impl Cu {
                     writeln!(f, "{}", cu.nop)?;
                 }
                 if let Some(ct) = cu.ct {
-                    writeln!(
-                        f,
-                        "{}",
-                        ct.display(cu.control0.as_ref(), cu.control1.as_ref())
-                    )?;
+                    writeln!(f, "{}", ct)?;
                 }
                 if cu.ipd.get() != 0 {
                     writeln!(f, "{}", cu.ipd)?;
@@ -274,7 +269,7 @@ impl Cu {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 let cu = self.0;
                 if let Some(control0) = cu.control0 {
-                    fmt::Display::fmt(&control0.display(cu.ct.as_ref()), f)?;
+                    control0.fmt(f)?;
                 }
                 if let Some(control1) = cu.control1 {
                     fmt::Display::fmt(&control1.display(cu.ct.as_ref()), f)?;

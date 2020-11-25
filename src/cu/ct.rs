@@ -2,7 +2,6 @@
 
 pub use crate::raw::types::{ClpIdx, DtAl};
 
-use super::{Control0, Control1};
 use crate::raw;
 use crate::raw::types::Ctpr;
 use crate::state::pred::Preg;
@@ -287,67 +286,19 @@ impl fmt::Display for CtCond {
 /// A control transfer instruction.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Ct {
-    ctpr: Option<Ctpr>,
-    cond: CtCond,
+    pub ctpr: Ctpr,
+    pub cond: CtCond,
 }
 
 impl Ct {
     /// Create a control transfer instruction.
     pub const fn new(ctpr: Ctpr, cond: CtCond) -> Self {
-        Self {
-            ctpr: Some(ctpr),
-            cond,
-        }
-    }
-    /// Create control transfer instruction without specifying `ctpr`.
-    ///
-    /// # Notice
-    ///
-    /// Used for special purpose.
-    pub const fn with_cond(cond: CtCond) -> Self {
-        Self { ctpr: None, cond }
-    }
-    /// Returns the control transfer pipeline register.
-    pub const fn ctpr(&self) -> Option<Ctpr> {
-        self.ctpr
-    }
-    /// Returns the control transfer condition.
-    pub const fn cond(&self) -> CtCond {
-        self.cond
-    }
-    /// Returns an object that implements `Display` for printing `Ct`.
-    pub fn display<'a>(
-        &'a self,
-        c0: Option<&'a Control0>,
-        c1: Option<&'a Control1>,
-    ) -> impl fmt::Display + 'a {
-        struct Display<'a> {
-            ct: &'a Ct,
-            c0: Option<&'a Control0>,
-            c1: Option<&'a Control1>,
-        }
-
-        impl fmt::Display for Display<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                match (self.c0, self.c1) {
-                    (Some(Control0::IBranch(_)), _) | (_, Some(Control1::Call { .. })) => Ok(()),
-                    _ => {
-                        if let Some(ctpr) = self.ct.ctpr {
-                            write!(f, "ct {}{}", ctpr, self.ct.cond)?;
-                        }
-                        Ok(())
-                    }
-                }
-            }
-        }
-
-        Display { ct: self, c0, c1 }
+        Self { ctpr, cond }
     }
     /// Tries to create a `Ct` from raw value.
     pub fn from_raw(raw: raw::Ct) -> Result<Option<Ct>, DecodeError> {
-        if let Some(op) = CtCond::try_from(raw)? {
-            let ctpr = Ctpr::new(raw.ctpr());
-            Ok(Some(Self { ctpr, cond: op }))
+        if let Some(cond) = CtCond::try_from(raw)? {
+            Ok(Ctpr::new(raw.ctpr()).map(|ctpr| Self::new(ctpr, cond)))
         } else {
             Ok(None)
         }
@@ -357,9 +308,13 @@ impl Ct {
 impl Into<raw::Ct> for Ct {
     fn into(self) -> raw::Ct {
         let mut raw: raw::Ct = self.cond.into();
-        if let Some(ctpr) = self.ctpr {
-            raw.set_ctpr(ctpr.get());
-        }
+        raw.set_ctpr(self.ctpr.get());
         raw
+    }
+}
+
+impl fmt::Display for Ct {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ct {}{}", self.ctpr, self.cond)
     }
 }

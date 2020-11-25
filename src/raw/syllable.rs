@@ -406,10 +406,27 @@ bitfield! {
     // done
     pub done_fdam, set_done_fdam: 26;
     pub done_trar, set_done_trar: 27;
+    // return, gettsd, hret, glaunch
+    pub u8, misc_ty, set_misc_ty: 2, 0;
     // disp, ldisp, sdisp, ibranch, puttsd
     pub i32, disp, set_disp: 27, 0;
     pub u8, op, set_op: 29, 28;
     pub u8, ctpr, set_ctpr: 31, 30;
+}
+
+impl Cs0 {
+    pub const OP1_DISP: u8 = 0;
+    pub const OP1_LDISP: u8 = 1;
+    pub const OP1_SDISP: u8 = 2;
+    pub const OP1_MISC: u8 = 3;
+    pub const OP2_IBRANCH: u8 = 0;
+    pub const OP2_PREF: u8 = 1;
+    pub const OP2_PUTTSD: u8 = 2;
+    pub const OP2_DONE: u8 = 3;
+    pub const MISC_TYPE_RETURN: u8 = 0;
+    pub const MISC_TYPE_GETTSD: u8 = 1;
+    pub const MISC_TYPE_HRET: u8 = 3;
+    pub const MISC_TYPE_GLAUNCH: u8 = 4;
 }
 
 bitfield! {

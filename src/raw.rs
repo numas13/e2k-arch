@@ -12,6 +12,7 @@ use crate::state::pred::Pred;
 use crate::util;
 use thiserror::Error;
 
+/// Error type for decode errors.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum DecodeError {
