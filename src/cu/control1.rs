@@ -287,7 +287,10 @@ impl Control1 {
         impl fmt::Display for Display<'_> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 match self.control1 {
-                    Control1::Setmas(_) => Ok(()),
+                    Control1::Setmas([c0, c2, c3, c5]) => {
+                        // TODO: print mas in alc instr
+                        writeln!(f, "setmas {:x}, {:x}, {:x}, {:x}", c0, c2, c3, c5)
+                    }
                     Control1::Sets(sets) => fmt::Display::fmt(&sets, f),
                     Control1::Setei(v) => writeln!(f, "setei {:#x}", v),
                     Control1::Wait(wait) => writeln!(f, "{}", wait),
