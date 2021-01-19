@@ -135,11 +135,8 @@ impl Channel {
         index: usize,
     ) -> Result<Self, DecodeError> {
         let als = bundle.als[index];
-        let ales = if (index == 2 || index == 5)
-            && bundle.hs.is_set_ales(index)
-            && bundle.ales[index].is_empty()
-        {
-            raw::Ales::DEFAULT_25_EXT
+        let ales = if !bundle.hs.is_set_ales(index) {
+            raw::Ales::NONE
         } else {
             bundle.ales[index]
         };

@@ -519,6 +519,7 @@ impl Into<Lts> for Cs1Lts0 {
 }
 
 impl Ales {
+    pub const NONE: Self = Self(0);
     pub const DEFAULT_25_EXT: Self = Self(0x01c0);
     pub const fn is_empty(&self) -> bool {
         self.0 == 0

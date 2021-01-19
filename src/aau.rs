@@ -134,7 +134,7 @@ impl fmt::Display for Aau {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, instr) in self.channels.iter().enumerate() {
             if let Some(instr) = instr {
-                write!(
+                writeln!(
                     f,
                     "{},{} {}, index = {}, am = {}, be = {}, {}",
                     instr.op,

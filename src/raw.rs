@@ -121,6 +121,12 @@ impl Unpacked {
         if self.hs.cs0() {
             self.cs0 = Cs0(read_u32()?);
         }
+        if self.hs.is_set_ales(2) {
+            self.ales[2] = Ales::DEFAULT_25_EXT;
+        }
+        if self.hs.is_set_ales(5) {
+            self.ales[5] = Ales::DEFAULT_25_EXT;
+        }
         if self.hs.is_ales25() {
             let val = read_u32()?;
             self.ales[2] = Ales((val >> 16) as u16);
@@ -261,10 +267,20 @@ impl Unpacked {
         if self.hs.cs0() {
             write_u32(self.cs0.0)?;
         }
-        if self.ales[2].0 != 0 || self.ales[5].0 != 0 {
-            let ales2 = self.ales[2].0;
-            let ales5 = self.ales[5].0;
-            write_u32((ales2 as u32) << 16 | ales5 as u32)?;
+        if self.ales[2] != Ales::NONE || self.ales[5] != Ales::NONE {
+            let ales2 = if self.ales[2] != Ales::NONE {
+                self.ales[2]
+            } else {
+                Ales::DEFAULT_25_EXT
+            };
+            let ales5 = if self.ales[5] != Ales::NONE {
+                self.ales[5]
+            } else {
+                Ales::DEFAULT_25_EXT
+            };
+            if ales2.op() != 1 || ales5.op() != 1 {
+                write_u32((ales2.0 as u32) << 16 | ales5.0 as u32)?;
+            }
         }
         if self.hs.cs1() {
             write_u32(self.cs1.0)?;
@@ -375,23 +391,5 @@ impl Unpacked {
     }
     pub fn find_rpc(&self) -> Option<&Rlp> {
         self.rlp_iter().find(|rlp| rlp.is_rpc())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn bundle_pack_unpack() {
-        for path in crate::TEST_BUNDLES_PATHS {
-            let data = fs::read(path).unwrap();
-            let (bundle, tail) = Unpacked::from_bytes(data.as_slice()).unwrap();
-            assert_eq!(tail, &[], "{}", path);
-            let mut buffer = [0u8; 64];
-            let (packed, _) = bundle.pack(&mut buffer).unwrap();
-            assert_eq!(packed.as_slice(), data, "{}", path);
-        }
     }
 }
